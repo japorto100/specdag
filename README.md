@@ -12,6 +12,28 @@ A fast, offline CLI and Model Context Protocol (MCP) server for validating, asse
 
 ---
 
+## Example Diagram
+
+GitHub natively renders Mermaid code blocks. Below is how a typical feature dependency map is visualized:
+
+```mermaid
+graph TD
+    n_4130ca023c(["User can import research documents (intent)"])
+    n_be4a54f2ae{{"Generated output contains only sourced claims (expectation)"}}
+    n_27732a3ec4[/"document.uploaded (event)"/]
+    n_282f1b4028["Extract text (job)"]
+    n_db97ffea6f[("Extracted text (artifact)")]
+    n_a12ba00100("Citation check (verifier)")
+
+    n_4130ca023c -->|"defines_success_for"| n_be4a54f2ae
+    n_27732a3ec4 -->|"triggers"| n_282f1b4028
+    n_282f1b4028 -->|"produces"| n_db97ffea6f
+    n_db97ffea6f -->|"verified_by"| n_a12ba00100
+    n_a12ba00100 -->|"verifies"| n_be4a54f2ae
+```
+
+---
+
 ## Installation
 
 ### A) Via npm/npx (Recommended for Cursor / Claude Desktop)
