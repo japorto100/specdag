@@ -4,36 +4,36 @@ A fast, offline CLI and Model Context Protocol (MCP) server for validating, asse
 
 ## Features
 
-- **deterministischer Wächter:** Validiert deklarative Feature-Maps auf Zyklen, Knotentypen und Edge-Constraints.
-- **globales Assembly:** Führt dezentral gepflegte lokale dependency maps zusammen, erkennt Konflikte und verifiziert systemweite Beziehungen.
-- **Impact-Analyse:** Ermittelt per Downstream-DFS alle nachgelagerten Systemkomponenten, die von einer Änderung eines bestimmten Knotens (z. B. eines Events oder Vertrags) betroffen wären.
-- **Visualisierung:** Generiert filterbare Mermaid-Diagramme und statische HTML-Review-Berichte.
-- **MCP-Server:** Exponiert CLI-Funktionalitäten als Stdio-Tools für Cursor, Claude Desktop und andere Agent-Runtimes.
+- **Deterministic Guardian:** Validates declarative feature maps for cyclic graphs, node types, and edge constraints.
+- **Global Assembly:** Recursively merges decentralized, feature-local dependency maps, detects naming conflicts, and validates system-wide relations.
+- **Impact Analysis:** Traverses downstream paths via Depth-First Search (DFS) to determine all system components affected by modifying a specific node (e.g., an event or API contract).
+- **Visualization:** Generates filterable Mermaid diagrams and beautiful, static HTML review reports.
+- **MCP Server:** Exposes all analytical capabilities as Stdio tools for Cursor, Claude Desktop, and other agent runtimes.
 
 ---
 
 ## Installation
 
-### A) Via npm/npx (Empfohlen für Cursor / Claude Desktop)
+### A) Via npm/npx (Recommended for Cursor / Claude Desktop)
 
-Du musst specdag nicht global installieren. Du kannst es direkt ausführen:
+You do not need to install specdag globally. You can run it directly:
 
 ```bash
 npx @japorto100/specdag --help
 ```
 
-Oder installiere es global auf deinem System:
+Or install it globally on your system:
 
 ```bash
 npm install -g @japorto100/specdag
 specdag --help
 ```
 
-*Hinweis: Der npm-Wrapper lädt während der Installation automatisch das passende, vorkompilierte native Go-Binary für dein Betriebssystem (Linux, macOS, Windows) und deine CPU-Architektur (amd64, arm64).*
+*Note: The npm wrapper automatically downloads the appropriate precompiled native Go binary for your operating system (Linux, macOS, Windows) and CPU architecture (amd64, arm64) during installation.*
 
 ### B) Via Go
 
-Falls du Go auf deinem System installiert hast:
+If you have Go installed on your system:
 
 ```bash
 go install github.com/japorto100/specdag@latest
@@ -41,11 +41,11 @@ go install github.com/japorto100/specdag@latest
 
 ---
 
-## MCP-Server Konfiguration
+## MCP Server Configuration
 
-Trage specdag in deine MCP-Konfigurationsdatei (z. B. `mcpServerConfig.json` für Cursor oder Claude Desktop) ein:
+Add specdag to your MCP configuration file (e.g., `mcpServerConfig.json` for Cursor or Claude Desktop):
 
-### A) Für npx (keine Go-Installation erforderlich):
+### A) Via npx (No Go installation required):
 
 ```json
 {
@@ -58,7 +58,7 @@ Trage specdag in deine MCP-Konfigurationsdatei (z. B. `mcpServerConfig.json` fü
 }
 ```
 
-### B) Für Go (falls go install verwendet wurde):
+### B) Via Go (If go install was used):
 
 ```json
 {
@@ -73,46 +73,46 @@ Trage specdag in deine MCP-Konfigurationsdatei (z. B. `mcpServerConfig.json` fü
 
 ---
 
-## CLI-Befehle
+## CLI Commands
 
-### 1. Lokal validieren
-Prüft eine lokale Feature-Map auf syntaktische und topologische Gültigkeit (Zyklenprüfung):
+### 1. Validate locally
+Checks a local feature map file for syntactic and topological validity (cycle checking):
 ```bash
 specdag validate specs/features/012-agent-run/dependency-map.yaml
 ```
 
-### 2. Global assemblieren
-Durchsucht ein Verzeichnis rekursiv nach allen lokalen Maps, validiert diese und führt sie konfliktfrei zusammen:
+### 2. Assemble globally
+Recursively searches a directory for all local maps, validates them, and merges them conflict-free:
 ```bash
 specdag assemble specs/features/ -o specs/_generated/dependency-map.global.json
 ```
 
-### 3. Mermaid rendern
-Erzeugt Mermaid-Markdown-Code aus einer Map. Mit `--view` lassen sich spezifische Teilausschnitte filtern (`full`, `critical-path`, `approvals`, `events`, `verification`, `orphans`):
+### 3. Render Mermaid
+Generates Mermaid markdown diagram code from a map. Use `--view` to filter specific sub-views (`full`, `critical-path`, `approvals`, `events`, `verification`, `orphans`):
 ```bash
 specdag render specs/features/012-agent-run/dependency-map.yaml --view critical-path
 ```
 
-### 4. Text-Zusammenfassung ausgeben
-Berechnet KPIs, Freigabeschranken (Approvals), verwaiste Knoten und den kritischen Pfad:
+### 4. Output Summary
+Calculates KPIs, approval gates, orphan nodes, and the critical path:
 ```bash
 specdag summary specs/features/012-agent-run/dependency-map.yaml
 ```
 
-### 5. Impact-Analyse durchführen
-Ermittelt alle transitiv betroffenen, nachgelagerten Systemkomponenten bei Änderung einer Node-ID:
+### 5. Perform Impact Analysis
+Finds all transitively affected downstream system components when a node ID changes:
 ```bash
 specdag impact specs/features/012-agent-run/dependency-map.yaml event.document.uploaded
 ```
 
-### 6. HTML-Report generieren
-Generiert eine schöne, statische HTML-Review-Seite (KPIs, Tabellen, Mermaid-Diagramme, Filter) für ein Feature oder ein assembliertes Gesamtverzeichnis:
+### 6. Generate HTML Report
+Generates a beautiful static HTML review page (KPIs, tables, Mermaid diagrams, filters) for a feature map or an assembled directory:
 ```bash
 specdag report specs/features/ -o specs/_generated/dependency-report.html
 ```
 
 ---
 
-## Lizenz
+## License
 
 MIT License.
