@@ -76,9 +76,11 @@ var doctorCmd = &cobra.Command{
 
 					// Versuche severity aus spec.md Frontmatter zu lesen
 					specMDPath := filepath.Join(path, "spec.md")
-					severity := 2 // default to 2 (Level 2) if not found/unparseable
+					severity := -1 // default to -1 (unknown)
+					hasSpecMD := false
 
 					if content, err := os.ReadFile(specMDPath); err == nil {
+						hasSpecMD = true
 						str := string(content)
 						if strings.HasPrefix(str, "---") {
 							parts := strings.SplitN(str, "---", 3)
@@ -98,8 +100,16 @@ var doctorCmd = &cobra.Command{
 						}
 					}
 
-					if severity >= 2 && os.IsNotExist(errYAML) && os.IsNotExist(errYML) && os.IsNotExist(errJSON) {
-						reportIssue(false, fmt.Sprintf("Feature folder '%s' (severity: %d) has no dependency-map.yaml/json. Level 2/3 features require a dependency map.", rel, severity))
+					hasMap := !os.IsNotExist(errYAML) || !os.IsNotExist(errYML) || !os.IsNotExist(errJSON)
+
+					if !hasMap {
+						if !hasSpecMD {
+							reportIssue(false, fmt.Sprintf("Feature folder '%s' has no spec.md or dependency map. Severity is unknown.", rel))
+						} else if severity == -1 {
+							reportIssue(false, fmt.Sprintf("Feature folder '%s' has spec.md but no 'severity' defined in frontmatter. Severity is unknown.", rel))
+						} else if severity >= 2 {
+							reportIssue(false, fmt.Sprintf("Feature folder '%s' (severity: %d) has no dependency-map.yaml/json. Level 2/3 features require a dependency map.", rel, severity))
+						}
 					}
 				}
 			} else {

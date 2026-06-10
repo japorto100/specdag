@@ -56,12 +56,12 @@ Source of truth: specs/features/*/dependency-map.yaml plus domains/, events/, co
 
 Use `graph.kind` to declare the role of the map:
 
-| Kind | Meaning | Usually executable? |
-|---|---|---:|
-| `spec_dependency` | Desired dependencies between feature/spec artifacts | No |
-| `event_flow` | Causal communication between events, commands, consumers, and state changes | No / partially |
-| `agent_run_trace` | Observed runtime trace of an agent run | No, historical |
-| `execution_workflow` | A concrete workflow that may be executed by a runtime | Yes |
+| Kind                 | Meaning                                                                     | Usually executable? |
+| -------------------- | --------------------------------------------------------------------------- | ------------------: |
+| `spec_dependency`    | Desired dependencies between feature/spec artifacts                         |                  No |
+| `event_flow`         | Causal communication between events, commands, consumers, and state changes |      No / partially |
+| `agent_run_trace`    | Observed runtime trace of an agent run                                      |      No, historical |
+| `execution_workflow` | A concrete workflow that may be executed by a runtime                       |                 Yes |
 
 Do not treat all graph kinds as runtime workflows.
 
@@ -77,10 +77,10 @@ graph:
   status: draft
 ```
 
-| Topology | Meaning | Cycle behavior |
-|---|---|---|
-| `dag` | Workflow, derivation, verification, task, or execution graph | cycles are errors |
-| `graph` | Domain relation, feedback loop, non-execution causal map | cycles are allowed |
+| Topology | Meaning                                                      | Cycle behavior     |
+| -------- | ------------------------------------------------------------ | ------------------ |
+| `dag`    | Workflow, derivation, verification, task, or execution graph | cycles are errors  |
+| `graph`  | Domain relation, feedback loop, non-execution causal map     | cycles are allowed |
 
 Default to `dag` unless a cycle is intentional and explained.
 
@@ -109,16 +109,16 @@ Durable cross-feature nodes should use domain/event/contract prefixes:
 
 Recommended prefixes:
 
-| Prefix | Use for |
-|---|---|
-| `feature.<feature>.intent.*` | feature-local intent nodes |
-| `feature.<feature>.expectation.*` | feature-local expectations |
-| `feature.<feature>.job.*` | feature-local jobs |
-| `event.<domain>.<past-tense-verb>` | durable events |
-| `contract.<domain>.<name>` | durable API/event/auth/data contracts |
-| `artifact.<domain>.<name>` | durable artifacts |
-| `verifier.<domain>.<name>` | reusable verifiers |
-| `approval.<domain>.<name>` | reusable approval gates |
+| Prefix                             | Use for                               |
+| ---------------------------------- | ------------------------------------- |
+| `feature.<feature>.intent.*`       | feature-local intent nodes            |
+| `feature.<feature>.expectation.*`  | feature-local expectations            |
+| `feature.<feature>.job.*`          | feature-local jobs                    |
+| `event.<domain>.<past-tense-verb>` | durable events                        |
+| `contract.<domain>.<name>`         | durable API/event/auth/data contracts |
+| `artifact.<domain>.<name>`         | durable artifacts                     |
+| `verifier.<domain>.<name>`         | reusable verifiers                    |
+| `approval.<domain>.<name>`         | reusable approval gates               |
 
 Avoid generic IDs such as `intent.main`, `event.created`, `job.process`, or `approval.required`.
 
@@ -134,14 +134,14 @@ nodes:
     status: accepted
 ```
 
-| Field | Required | Meaning |
-|---|---:|---|
-| `id` | yes | stable graph identity |
-| `type` | yes | allowed node type |
-| `title` | yes | human-readable label |
-| `ref` | no | path to source spec, event, contract, policy, artifact, or evidence |
-| `owner` | no | owning domain/team/module |
-| `status` | no | `draft`, `accepted`, or `superseded` |
+| Field    | Required | Meaning                                                             |
+| -------- | -------: | ------------------------------------------------------------------- |
+| `id`     |      yes | stable graph identity                                               |
+| `type`   |      yes | allowed node type                                                   |
+| `title`  |      yes | human-readable label                                                |
+| `ref`    |       no | path to source spec, event, contract, policy, artifact, or evidence |
+| `owner`  |       no | owning domain/team/module                                           |
+| `status` |       no | `draft`, `accepted`, or `superseded`                                |
 
 ## Edge fields
 
@@ -154,13 +154,13 @@ edges:
     required: true
 ```
 
-| Field | Required | Meaning |
-|---|---:|---|
-| `from` | yes | source node ID |
-| `to` | yes | target node ID |
-| `type` | yes | allowed edge relationship |
-| `condition` | no | condition under which the edge applies |
-| `required` | no | whether this dependency is mandatory |
+| Field       | Required | Meaning                                |
+| ----------- | -------: | -------------------------------------- |
+| `from`      |      yes | source node ID                         |
+| `to`        |      yes | target node ID                         |
+| `type`      |      yes | allowed edge relationship              |
+| `condition` |       no | condition under which the edge applies |
+| `required`  |       no | whether this dependency is mandatory   |
 
 ## Allowed node types
 
