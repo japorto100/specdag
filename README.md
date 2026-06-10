@@ -1,14 +1,14 @@
 # specdag
 
-A fast, offline CLI and Model Context Protocol (MCP) server for validating, assembling, and analyzing dependency maps in Event-Spec-Driven Development (ESDD).
+A fast CLI and Model Context Protocol (MCP) server for validating, assembling, and analyzing dependency maps in Event-Spec-Driven Development (ESDD). Once installed, the Go binary runs fully offline.
 
 ## Features
 
 - **Deterministic Guardian:** Validates declarative feature maps for cyclic graphs, node types, and edge constraints.
 - **Global Assembly:** Recursively merges decentralized, feature-local dependency maps, detects naming conflicts, and validates system-wide relations.
-- **Impact Analysis:** Traverses downstream paths via Depth-First Search (DFS) to determine all system components affected by modifying a specific node (e.g., an event or API contract).
-- **Visualization:** Generates filterable Mermaid diagrams and beautiful, static HTML review reports.
-- **MCP Server:** Exposes all analytical capabilities as Stdio tools for Cursor, Claude Desktop, and other agent runtimes.
+- **Impact Analysis:** Traverses downstream paths via Depth-First Search (DFS) to list downstream nodes reachable from a selected node.
+- **Visualization:** Generates filterable Mermaid diagrams and static HTML review reports.
+- **MCP Server:** Exposes tools for validating maps, assembling global graphs, rendering diagrams, showing summaries, performing impact analysis, and generating reports.
 
 ---
 
@@ -51,7 +51,7 @@ npm install -g @japorto100/specdag
 specdag --help
 ```
 
-*Note: The npm wrapper automatically downloads the appropriate precompiled native Go binary for your operating system (Linux, macOS, Windows) and CPU architecture (amd64, arm64) during installation.*
+*Note: The installed Go binary runs fully offline. The initial npm/npx installation requires network access to download the appropriate precompiled native Go binary for your operating system (Linux, macOS, Windows) and CPU architecture (amd64, arm64) from GitHub Releases.*
 
 ### B) Via Go
 

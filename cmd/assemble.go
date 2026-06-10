@@ -29,7 +29,7 @@ func AssembleDirectory(rootDir string) (string, error) {
 		Edges []dag.Edge `json:"edges"`
 	}{}
 	globalGraph.Graph.ID = "global-system-map"
-	globalGraph.Graph.Kind = "global_dependency"
+	globalGraph.Graph.Kind = "spec_dependency"
 	globalGraph.Graph.Topology = "dag"
 	globalGraph.Graph.Status = "accepted"
 
