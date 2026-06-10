@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -63,7 +64,8 @@ func LoadDependencyMap(filePath string) (*dag.DependencyMap, error) {
 
 	var depMap dag.DependencyMap
 	ext := strings.ToLower(filepath.Ext(filePath))
-	isJSON := ext == ".json" || (len(data) > 0 && data[0] == '{')
+	trimmed := bytes.TrimSpace(data)
+	isJSON := ext == ".json" || (len(trimmed) > 0 && trimmed[0] == '{')
 
 	if isJSON {
 		if err := json.Unmarshal(data, &depMap); err != nil {
