@@ -2,6 +2,73 @@
 
 A fast CLI and Model Context Protocol (MCP) server for validating, assembling, and analyzing dependency maps in Event-Spec-Driven Development (ESDD). Once installed, the Go binary runs fully offline.
 
+## Approach: Event-Spec-Driven Development + DAGs
+
+`specdag` is built around a simple idea:
+
+> Intent and expectations define what should be true.  
+> Events and contracts define how systems communicate.  
+> A dependency DAG defines what depends on what, what is blocked, and what must be verified before work is considered safe.
+
+This makes `specdag` a small control layer for Event-Spec-Driven Development (ESDD). It is not a runtime workflow engine and it is not a code knowledge graph. Instead, it validates declarative dependency maps that live next to feature specs.
+
+A typical feature folder may contain:
+
+```text
+specs/features/012-agent-run/
+  spec.md
+  event-flow.md
+  dependency-map.yaml
+  contracts/
+  evidence/
+  tasks.md
+```
+
+The local `dependency-map.yaml` describes the feature’s intended dependency structure: intents, expectations, events, commands, jobs, artifacts, verifiers, approvals, and contracts.
+
+Global maps are generated, not hand-authored:
+
+```text
+specs/features/*/dependency-map.yaml
+        ↓
+specdag assemble
+        ↓
+specs/_generated/dependency-map.global.json
+```
+
+Local maps are the editable source of truth. Global maps, Mermaid diagrams, HTML reports, and impact reports are generated review artifacts.
+
+## How specdag fits with code knowledge graphs
+
+`specdag` models the intended system behavior before or during implementation:
+
+```text
+specdag = desired architecture, feature intent, event contracts, dependency DAG
+```
+
+Code knowledge graph tools such as **GitNexus** can then be used to inspect the actual repository structure:
+
+```text
+GitNexus = actual code structure, files, symbols, call chains, code dependencies
+```
+
+The intended workflow is:
+
+1. **Define** intent, expectations, events, and contracts.
+2. **Add or update** `dependency-map.yaml` for Level 2/3 features.
+3. **Validate** the map with `specdag`.
+4. **Assemble** global dependency maps when multiple features interact.
+5. **Use** a code knowledge graph tool such as GitNexus to locate the actual implementation points.
+6. **Compare** the desired Spec-DAG with the actual code structure.
+7. **Implement** changes.
+8. **Re-run** `specdag` validation, tests, and review reports.
+
+In short:
+* `specdag` defines what **should** be true.
+* `GitNexus` helps find where the code currently implements or violates it.
+
+---
+
 ## Features
 
 - **Deterministic Guardian:** Validates declarative feature maps for cyclic graphs, node types, and edge constraints.
