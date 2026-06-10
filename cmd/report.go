@@ -57,7 +57,7 @@ func GenerateReportData(targetPath string) (*ReportData, error) {
 
 	if fi.IsDir() {
 		// Assembling directory
-		jsonStr, err := AssembleDirectory(targetPath, "json")
+		jsonStr, err := AssembleDirectory(targetPath, "json", false)
 		if err != nil {
 			validationStatus = "FAIL"
 			validationMsg = err.Error()

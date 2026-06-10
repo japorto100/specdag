@@ -163,7 +163,7 @@ Add specdag to your MCP configuration file (e.g., `mcpServerConfig.json` for Cur
 
 ## MCP Tools
 
-`specdag` exposes the following tools to AI agents:
+`specdag` exposes the following tools to AI agents.
 
 | MCP Tool                    | Purpose                                                                                    | Parameters                                                       |
 | --------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |

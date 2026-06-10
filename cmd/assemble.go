@@ -19,7 +19,7 @@ var formatFlag string
 // AssembleDirectory sucht alle dependency-map.* Dateien im rootDir,
 // merged diese zu einer globalen Map und prüft auf globale Zyklen.
 // Gibt das Ergebnis als String im gewünschten Format (json/yaml) zurück.
-func AssembleDirectory(rootDir string, format string) (string, error) {
+func AssembleDirectory(rootDir string, format string, includeGraphs bool) (string, error) {
 	globalGraph := struct {
 		Graph struct {
 			ID        string `yaml:"id" json:"id"`
@@ -56,6 +56,12 @@ func AssembleDirectory(rootDir string, format string) (string, error) {
 			depMap, err := LoadDependencyMap(path)
 			if err != nil {
 				return fmt.Errorf("error reading %s: %w", path, err)
+			}
+
+			// Assemble Topology Policy: Überspringen und Warnen, wenn Topology == "graph" und includeGraphs == false
+			if depMap.Graph.Topology == "graph" && !includeGraphs {
+				fmt.Fprintf(os.Stderr, "WARN: Skipping dependency map at %s because topology is 'graph' (use --include-graphs to include)\n", path)
+				return nil
 			}
 
 			// 3. Nodes mergen und semantische Konflikte prüfen (ID, Typ und Titel)
@@ -125,6 +131,8 @@ func AssembleDirectory(rootDir string, format string) (string, error) {
 	return string(outputBytes), nil
 }
 
+var includeGraphsFlag bool
+
 var assembleCmd = &cobra.Command{
 	Use:   "assemble [dir]",
 	Short: "Assembles multiple feature dependency maps (dependency-map.yaml/json) into a single global map",
@@ -142,7 +150,7 @@ var assembleCmd = &cobra.Command{
 			}
 		}
 
-		output, err := AssembleDirectory(rootDir, format)
+		output, err := AssembleDirectory(rootDir, format, includeGraphsFlag)
 		if err != nil {
 			fmt.Printf("FAIL: %v\n", err)
 			os.Exit(1)
@@ -163,4 +171,5 @@ var assembleCmd = &cobra.Command{
 func init() {
 	assembleCmd.Flags().StringVarP(&outputFlag, "output", "o", "", "Output file path")
 	assembleCmd.Flags().StringVar(&formatFlag, "format", "json", "Output format (json or yaml)")
+	assembleCmd.Flags().BoolVar(&includeGraphsFlag, "include-graphs", false, "Include dependency maps with topology 'graph' in the assembly")
 }

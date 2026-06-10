@@ -80,7 +80,7 @@ func LoadDependencyMap(filePath string) (*dag.DependencyMap, error) {
 }
 
 // ValidateDependencyMap validiert die Struktur einer geladenen Dependency Map.
-func ValidateDependencyMap(depMap *dag.DependencyMap) error {
+func ValidateDependencyMap(depMap *dag.DependencyMap, strict bool) error {
 	if depMap.Graph.ID == "" {
 		return fmt.Errorf("graph.id is required")
 	}
@@ -110,6 +110,7 @@ func ValidateDependencyMap(depMap *dag.DependencyMap) error {
 	if len(depMap.Nodes) == 0 {
 		return fmt.Errorf("nodes list cannot be empty")
 	}
+	nodeMap := make(map[string]dag.Node)
 	nodeSet := make(map[string]bool)
 	for i, n := range depMap.Nodes {
 		if n.ID == "" {
@@ -119,6 +120,7 @@ func ValidateDependencyMap(depMap *dag.DependencyMap) error {
 			return fmt.Errorf("duplicate node ID detected: %s", n.ID)
 		}
 		nodeSet[n.ID] = true
+		nodeMap[n.ID] = n
 
 		if !isValidNodeType(n.Type) {
 			return fmt.Errorf("invalid node type for '%s': '%s'", n.ID, n.Type)
@@ -136,14 +138,49 @@ func ValidateDependencyMap(depMap *dag.DependencyMap) error {
 		if e.From == "" || e.To == "" {
 			return fmt.Errorf("edge[%d] has empty from or to", i)
 		}
-		if !nodeSet[e.From] {
+		fromNode, fromFound := nodeMap[e.From]
+		if !fromFound {
 			return fmt.Errorf("edge references undeclared node ID: %s (in from)", e.From)
 		}
-		if !nodeSet[e.To] {
+		toNode, toFound := nodeMap[e.To]
+		if !toFound {
 			return fmt.Errorf("edge references undeclared node ID: %s (in to)", e.To)
 		}
 		if !isValidEdgeType(e.Type) {
 			return fmt.Errorf("invalid edge type: '%s' (between %s and %s)", e.Type, e.From, e.To)
+		}
+
+		if strict {
+			switch e.Type {
+			case "defines_success_for":
+				if fromNode.Type != "intent" || toNode.Type != "expectation" {
+					return fmt.Errorf("strict edge mismatch: defines_success_for must link intent -> expectation, got %s (%s) -> %s (%s)", e.From, fromNode.Type, e.To, toNode.Type)
+				}
+			case "triggers":
+				if (fromNode.Type != "event" && fromNode.Type != "approval") || (toNode.Type != "job" && toNode.Type != "command") {
+					return fmt.Errorf("strict edge mismatch: triggers must link event/approval -> job/command, got %s (%s) -> %s (%s)", e.From, fromNode.Type, e.To, toNode.Type)
+				}
+			case "produces":
+				if (fromNode.Type != "job" && fromNode.Type != "command" && fromNode.Type != "contract") || (toNode.Type != "artifact" && toNode.Type != "event") {
+					return fmt.Errorf("strict edge mismatch: produces must link job/command/contract -> artifact/event, got %s (%s) -> %s (%s)", e.From, fromNode.Type, e.To, toNode.Type)
+				}
+			case "consumes":
+				if (fromNode.Type != "job" && fromNode.Type != "command") || (toNode.Type != "artifact" && toNode.Type != "event" && toNode.Type != "contract") {
+					return fmt.Errorf("strict edge mismatch: consumes must link job/command -> artifact/event/contract, got %s (%s) -> %s (%s)", e.From, fromNode.Type, e.To, toNode.Type)
+				}
+			case "verified_by":
+				if (fromNode.Type != "artifact" && fromNode.Type != "event" && fromNode.Type != "job") || toNode.Type != "verifier" {
+					return fmt.Errorf("strict edge mismatch: verified_by must link artifact/event/job -> verifier, got %s (%s) -> %s (%s)", e.From, fromNode.Type, e.To, toNode.Type)
+				}
+			case "verifies":
+				if (fromNode.Type != "verifier" && fromNode.Type != "event") || toNode.Type != "expectation" {
+					return fmt.Errorf("strict edge mismatch: verifies must link verifier/event -> expectation, got %s (%s) -> %s (%s)", e.From, fromNode.Type, e.To, toNode.Type)
+				}
+			case "requires_approval":
+				if (fromNode.Type != "job" && fromNode.Type != "event" && fromNode.Type != "command") || toNode.Type != "approval" {
+					return fmt.Errorf("strict edge mismatch: requires_approval must link job/event/command -> approval, got %s (%s) -> %s (%s)", e.From, fromNode.Type, e.To, toNode.Type)
+				}
+			}
 		}
 	}
 
@@ -167,14 +204,26 @@ func ValidateDependencyMap(depMap *dag.DependencyMap) error {
 	return nil
 }
 
-// ValidateFile lädt und validiert eine Map-Datei.
+// ValidateDependencyMapNonStrict wrapper for backward compatibility
+func ValidateDependencyMapNonStrict(depMap *dag.DependencyMap) error {
+	return ValidateDependencyMap(depMap, false)
+}
+
+// ValidateFile lädt und validiert eine Map-Datei (nicht-strikt).
 func ValidateFile(filePath string) error {
+	return ValidateFileWithStrict(filePath, false)
+}
+
+// ValidateFileWithStrict lädt und validiert eine Map-Datei mit strict option.
+func ValidateFileWithStrict(filePath string, strict bool) error {
 	depMap, err := LoadDependencyMap(filePath)
 	if err != nil {
 		return err
 	}
-	return ValidateDependencyMap(depMap)
+	return ValidateDependencyMap(depMap, strict)
 }
+
+var strictFlag bool
 
 var validateCmd = &cobra.Command{
 	Use:   "validate [file.yaml|file.json]",
@@ -182,10 +231,14 @@ var validateCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		filePath := args[0]
-		if err := ValidateFile(filePath); err != nil {
+		if err := ValidateFileWithStrict(filePath, strictFlag); err != nil {
 			fmt.Printf("FAIL: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Printf("PASS: %s is valid!\n", filePath)
 	},
+}
+
+func init() {
+	validateCmd.Flags().BoolVar(&strictFlag, "strict", false, "Enforce strict ESDD node and edge relationship rules")
 }
