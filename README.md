@@ -2,6 +2,8 @@
 
 A fast CLI and Model Context Protocol (MCP) server for validating, assembling, and analyzing dependency maps in Event-Spec-Driven Development (ESDD). Once installed, the Go binary runs fully offline.
 
+---
+
 ## Approach: Normative Spec-DAG Grounded in Evidence
 
 `specdag` is built around a clear distinction between intended behavior (normative) and observed reality (descriptive):
@@ -26,6 +28,32 @@ To avoid semantic drift and agent confusion, the ESDD workflow distinguishes bet
 
 ---
 
+## Example: Bot Activation Spec-DAG
+
+GitHub natively renders Mermaid code blocks. Below is how a normative feature dependency map for trading bot activation is modeled and visualized in `specdag` (focusing on obligations and gates, rather than simple data flow):
+
+```mermaid
+graph TD
+    intent(["User can activate a paper-trading bot (intent)"])
+    expectation{{"Bot activation requires validated config and human approval (expectation)"}}
+    contract["bot.config.v1 (contract)"]
+    event_proposed[/"bot.config.proposed (event)"/]
+    verifier("Risk policy check (verifier)")
+    approval{"Human approval granted (approval)"}
+    command["activate.paper.bot (command)"]
+    event_activated[/"bot.activated (event)"/]
+
+    intent -->|"defines_success_for"| expectation
+    contract -->|"produces"| event_proposed
+    event_proposed -->|"verified_by"| verifier
+    verifier -->|"verifies"| expectation
+    event_proposed -->|"requires_approval"| approval
+    approval -->|"triggers"| command
+    command -->|"produces"| event_activated
+```
+
+---
+
 ## How specdag fits with code knowledge graphs
 
 `specdag` defines the intended architecture, while code intelligence engines like **GitNexus** analyze the actual codebase:
@@ -37,6 +65,13 @@ Run Trace  = Observed Runtime Trace (what happened during execution)
 ```
 
 ### The ESDD Workflow
+
+```mermaid
+graph TD
+    A["dependency-map.yaml<br>(Normative Spec-DAG)"] -->|specdag validate| B(Verification Checks)
+    B -->|compare & reconcile| C["GitNexus / Code Graph<br>(Observed Code Graph)"]
+    C --> D{Evidence Gap / Decision / Implementation}
+```
 
 1. **Define** intent, expectations, events, and contracts in specs.
 2. **Model** the intended dependencies in a local `dependency-map.yaml` next to feature specs.
@@ -60,28 +95,6 @@ In short:
 - **Impact Analysis:** Traverses downstream paths via Depth-First Search (DFS) to list downstream nodes reachable from a selected node.
 - **Visualization:** Generates filterable Mermaid diagrams and static HTML review reports.
 - **MCP Server:** Exposes tools for validating maps, assembling global graphs, rendering diagrams, showing summaries, performing impact analysis, and generating reports.
-
----
-
-## Example Diagram
-
-GitHub natively renders Mermaid code blocks. Below is how a typical feature dependency map is visualized:
-
-```mermaid
-graph TD
-    n_4130ca023c(["User can import research documents (intent)"])
-    n_be4a54f2ae{{"Generated output contains only sourced claims (expectation)"}}
-    n_27732a3ec4[/"document.uploaded (event)"/]
-    n_282f1b4028["Extract text (job)"]
-    n_db97ffea6f[("Extracted text (artifact)")]
-    n_a12ba00100("Citation check (verifier)")
-
-    n_4130ca023c -->|"defines_success_for"| n_be4a54f2ae
-    n_27732a3ec4 -->|"triggers"| n_282f1b4028
-    n_282f1b4028 -->|"produces"| n_db97ffea6f
-    n_db97ffea6f -->|"verified_by"| n_a12ba00100
-    n_a12ba00100 -->|"verifies"| n_be4a54f2ae
-```
 
 ---
 
@@ -179,7 +192,7 @@ specdag impact specs/features/012-agent-run/dependency-map.yaml event.document.u
 ```
 
 ### 6. Generate HTML Report
-Generates a beautiful static HTML review page (KPIs, tables, Mermaid diagrams, filters) for a feature map or an assembled directory:
+Generates a static HTML review report (KPIs, tables, Mermaid diagrams, filters) for a feature map or an assembled directory:
 ```bash
 specdag report specs/features/ -o specs/_generated/dependency-report.html
 ```
