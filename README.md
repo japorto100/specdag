@@ -4,7 +4,13 @@ A fast CLI and Model Context Protocol (MCP) server for validating, assembling, a
 
 ---
 
-## Approach: Normative Spec-DAG Grounded in Evidence
+## What is specdag?
+
+`specdag` is a lightweight tool to define and validate the intended architecture of your event-driven systems using decentralized dependency maps. It acts as a normative control layer for your specifications, ensuring clean event flows, safety approvals, and verification gates before implementation.
+
+---
+
+## Approach: Event-Spec-Driven Development + DAGs
 
 `specdag` is built around a clear distinction between intended behavior (normative) and observed reality (descriptive):
 
@@ -29,33 +35,17 @@ To avoid semantic drift and agent confusion, the ESDD workflow distinguishes bet
 
 ---
 
-## Example: Bot Activation Spec-DAG
+## Normative Spec-DAG vs Observed Code Graph
 
-GitHub natively renders Mermaid code blocks. Below is how a normative feature dependency map for trading bot activation is modeled and visualized in `specdag` (focusing on obligations and gates, rather than simple data flow):
-
-```mermaid
-graph TD
-    intent(["User can activate a paper-trading bot (intent)"])
-    expectation{{"Bot activation requires validated config and human approval (expectation)"}}
-    contract["bot.config.v1 (contract)"]
-    event_proposed[/"bot.config.proposed (event)"/]
-    verifier("Risk policy check (verifier)")
-    approval{"Human approval granted (approval)"}
-    command["activate.paper.bot (command)"]
-    event_activated[/"bot.activated (event)"/]
-
-    intent -->|"defines_success_for"| expectation
-    contract -->|"produces"| event_proposed
-    event_proposed -->|"verified_by"| verifier
-    verifier -->|"verifies"| expectation
-    event_proposed -->|"requires_approval"| approval
-    approval -->|"triggers"| command
-    command -->|"produces"| event_activated
-```
+To keep features aligned, we adhere to these principles:
+- **specdag** defines what should be true.
+- **GitNexus** helps inspect where the code currently implements or violates it.
+- **Run traces** show what happened at runtime.
+- **Decisions** reconcile mismatches.
 
 ---
 
-## How specdag fits with code knowledge graphs
+## How it fits with GitNexus
 
 `specdag` defines the intended architecture, while code intelligence engines like **GitNexus** analyze the actual codebase:
 
@@ -84,19 +74,8 @@ graph TD
 8. **Implement** changes and verify with tests and `specdag report`.
 
 In short:
-
 - `specdag` defines what **should** be true.
 - `GitNexus` helps find where the code currently implements or violates it.
-
----
-
-## Features
-
-- **Deterministic Guardian:** Validates declarative feature maps for cyclic graphs, node types, and edge constraints.
-- **Global Assembly:** Recursively merges decentralized, feature-local dependency maps, detects naming conflicts, and validates system-wide relations.
-- **Impact Analysis:** Traverses downstream paths via Depth-First Search (DFS) to list downstream nodes reachable from a selected node.
-- **Visualization:** Generates filterable Mermaid diagrams and static HTML review reports.
-- **MCP Server:** Exposes tools for validating maps, assembling global graphs, rendering diagrams, showing summaries, performing impact analysis, and generating reports.
 
 ---
 
@@ -161,27 +140,6 @@ Add specdag to your MCP configuration file (e.g., `mcpServerConfig.json` for Cur
 
 ---
 
-## MCP Tools
-
-`specdag` exposes the following tools to AI agents.
-
-| MCP Tool                    | Purpose                                                                                    | Parameters                                                       |
-| --------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| `validate_map`              | Validates a local dependency-map.yaml/json file for correctness and cycles.                | `filePath` (string, required)                                    |
-| `assemble_maps`             | Walk directory, merge all feature dependency maps and check for global cycles/conflicts.   | `dirPath` (string, required)                                     |
-| `render_mermaid`            | Renders a local map into a Mermaid markdown diagram string.                                | `filePath` (string, required), `view` (string)                   |
-| `summary_map`               | Provides a textual summary of metrics, blocked approvals, orphans, and critical path.      | `filePath` (string, required)                                    |
-| `analyze_impact`            | Calculates all downstream nodes affected by changing a specific node ID in a map.          | `filePath` (string, required), `nodeId` (string, required)       |
-| `generate_report`           | Generates a static HTML review report for a dependency map file or specs directory.        | `targetPath` (string, required), `outputPath` (string, required) |
-| `get_rules`                 | Returns the full ESDD (Event-Spec-Driven Development) skill rules and templates.           | None                                                             |
-| `start_feature_flow`        | Provides ESDD checklist and question flow for starting a single-feature implementation.    | `featurePath` (string, required)                                 |
-| `start_integration_flow`    | Provides ESDD checklist for integrating multiple features via shared events/contracts.     | `dirPath` (string, required)                                     |
-| `start_reconciliation_flow` | Provides ESDD checklist for reconciling discrepancies between Spec-DAG and code.           | `featurePath` (string, required)                                 |
-| `review_dependency_map`     | Reviews a local dependency map from a methodic ESDD perspective (intent, verifiers, etc.). | `filePath` (string, required)                                    |
-| `migrate_feature_to_dag`    | Provides step-by-step guide for migrating legacy specs into an ESDD Spec-DAG.              | `featurePath` (string, required)                                 |
-
----
-
 ## CLI Commands
 
 ### 1. Validate locally
@@ -192,12 +150,24 @@ Checks a local feature map file for syntactic and topological validity (cycle ch
 specdag validate specs/features/012-agent-run/dependency-map.yaml
 ```
 
+Use `--strict` to enforce strict ESDD relationship rules:
+
+```bash
+specdag validate specs/features/012-agent-run/dependency-map.yaml --strict
+```
+
 ### 2. Assemble globally
 
 Recursively searches a directory for all local maps, validates them, and merges them conflict-free:
 
 ```bash
 specdag assemble specs/features/ -o specs/_generated/dependency-map.global.json
+```
+
+Use `--include-graphs` to include dependency maps with `topology: graph` (they are skipped by default):
+
+```bash
+specdag assemble specs/features/ --include-graphs -o specs/_generated/dependency-map.global.json
 ```
 
 Use `--format yaml` to output the assembled map in YAML format:
@@ -248,7 +218,7 @@ specdag doctor specs/
 
 ### 8. Cross-check Catalogs
 
-Checks referenced events and contracts in your dependency maps against their catalog Markdown templates to ensure consistent status, IDs, and exists properties:
+Checks referenced events and contracts in your dependency maps against their catalog Markdown templates to ensure consistent status, IDs, and fields:
 
 ```bash
 specdag check-catalogs specs/
@@ -256,13 +226,51 @@ specdag check-catalogs specs/
 
 ---
 
+## MCP Tools
+
+`specdag` exposes the following tools to AI agents:
+
+| MCP Tool | Purpose | Parameters |
+|---|---|---|
+| `validate_map` | Validate a local dependency map. | `filePath`, `strict` |
+| `assemble_maps` | Assemble local feature maps into a generated global map. | `dirPath`, `includeGraphs`, `format` |
+| `render_mermaid` | Render a Mermaid diagram from a dependency map. | `filePath`, `view` |
+| `summary_map` | Summarize nodes, edges, gaps, approvals, and critical paths. | `filePath` |
+| `analyze_impact` | List downstream nodes affected by a selected node. | `filePath`, `nodeId` |
+| `generate_report` | Generate a static HTML review report. | `path`, `output` |
+| `get_rules` | Return embedded ESDD rules and templates. | none |
+| `start_feature_flow` | Start the single-feature ESDD question flow. | optional `featurePath` |
+| `start_integration_flow` | Start the multi-feature integration flow. | optional `specsPath` |
+| `start_reconciliation_flow` | Start the Spec-DAG vs observed-code reconciliation flow. | optional `featurePath` |
+| `review_dependency_map` | Review a map for ESDD quality issues. | `filePath` |
+| `migrate_feature_to_dag` | Guide migration from free-text specs/code evidence to a dependency map. | `featurePath` |
+
+---
+
 ## Examples
 
 You can find the following examples in the [examples/](examples/) directory:
 
-- [bot-activation.dependency-map.yaml](examples/bot-activation.dependency-map.yaml): The main Bot Activation ESDD example.
+- [bot-activation.dependency-map.yaml](examples/bot-activation.dependency-map.yaml): The main Bot Activation ESDD example (highly recommended).
 - [research-import.dependency-map.yaml](examples/research-import.dependency-map.yaml): The secondary Research Document Ingestion/RAG example.
+- [global.generated.example.json](examples/global.generated.example.json): An assembled global map example.
 - [dependency-report.example.html](examples/dependency-report.example.html): A static HTML report artifact showing all metrics, mermaid rendering, and gap warnings.
+
+---
+
+## Development
+
+### Running locally
+To run the CLI tool locally:
+```bash
+go run main.go --help
+```
+
+### Running tests
+To run the Go unit tests:
+```bash
+go test ./...
+```
 
 ---
 

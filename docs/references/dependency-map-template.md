@@ -175,15 +175,15 @@ edges:
 - `verifier`
 - `approval`
 
-## Allowed edge types
+## Allowed edge types (Strict Validation Rules)
 
-- `defines_success_for` — intent -> expectation
-- `triggers` — event -> job/command
-- `produces` — job -> artifact/event
-- `consumes` — job/command -> artifact/event
-- `verified_by` — artifact -> verifier
-- `verifies` — verifier -> expectation
-- `requires_approval` — job/event -> approval
+- `defines_success_for` — `intent` -> `expectation`
+- `triggers` — `event` or `approval` -> `job` or `command`
+- `produces` — `job`, `command`, or `contract` -> `artifact` or `event`
+- `consumes` — `job` or `command` -> `artifact`, `event`, or `contract`
+- `verified_by` — `artifact`, `event`, or `job` -> `verifier`
+- `verifies` — `verifier` or `event` -> `expectation`
+- `requires_approval` — `job`, `event`, or `command` -> `approval`
 
 ## Generated review artifacts
 

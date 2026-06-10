@@ -88,6 +88,13 @@ func RunDoctor(specsDir string) (int, int, error) {
 									case float64:
 										severity = int(v)
 									}
+								} else if lvlVal, ok := fm["level"]; ok {
+									switch v := lvlVal.(type) {
+									case int:
+										severity = v
+									case float64:
+										severity = int(v)
+									}
 								}
 							}
 						}
@@ -98,9 +105,9 @@ func RunDoctor(specsDir string) (int, int, error) {
 
 				if !hasMap {
 					if !hasSpecMD {
-						reportIssue(false, fmt.Sprintf("Feature folder '%s' has no spec.md or dependency map. Severity is unknown.", rel))
+						reportIssue(false, fmt.Sprintf("Feature folder '%s' has no spec.md or dependency map. severity missing; cannot determine whether dependency-map is required.", rel))
 					} else if severity == -1 {
-						reportIssue(false, fmt.Sprintf("Feature folder '%s' has spec.md but no 'severity' defined in frontmatter. Severity is unknown.", rel))
+						reportIssue(false, fmt.Sprintf("Feature folder '%s' has spec.md but no 'severity' or 'level' defined in frontmatter. severity missing; cannot determine whether dependency-map is required.", rel))
 					} else if severity >= 2 {
 						reportIssue(false, fmt.Sprintf("Feature folder '%s' (severity: %d) has no dependency-map.yaml/json. Level 2/3 features require a dependency map.", rel, severity))
 					}

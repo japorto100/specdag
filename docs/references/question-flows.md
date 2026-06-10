@@ -6,18 +6,19 @@ This document details the three primary ESDD (Event-Spec-Driven Development) que
 
 ## 1. Single Feature Flow
 
+### When to use
 Use this when designing or modifying a single vertical feature.
 
-### Question Sequence
+### Required artifacts
+- `spec.md` (Intent and expectations, with severity defined in frontmatter)
+- `tasks.md` (Implementation check-steps)
+- `dependency-map.yaml` (Local Spec-DAG, required for Level 2+)
+- `event-flow.md` (Prose event sequence, required for Level 2+)
 
-1. **What is the human intent?**
-   - What value does this feature deliver to the user?
-   - Who is the user persona, and what is their entry point?
-2. **What expectations define success or failure?**
-   - What must happen? (Happy path)
-   - What must _never_ happen? (Safety boundaries, invariant constraints)
-3. **What evidence exists?**
-   - Are there existing specs, code behaviors, database schemas, or screenshots that anchor this feature?
+### Questions to ask
+1. **What is the human intent?** Who is the user persona, and what is their entry point?
+2. **What expectations define success or failure?** What must happen (happy path) and what must _never_ happen (safety boundaries, invariant constraints)?
+3. **What evidence exists?** Are there existing specs, code behaviors, database schemas, or screenshots that anchor this feature?
 4. **What events, commands, or contracts belong to this feature?**
    - Events (past tense: `x.created`, `y.approved`)
    - Commands (actions: `create.x`, `approve.y`)
@@ -27,79 +28,81 @@ Use this when designing or modifying a single vertical feature.
    - Artifacts: Intermediate files, database records, compiled assets
    - Verifiers: Test suites, linters, risk engines, policy checkers
    - Approvals: Human-in-the-loop gates
-6. **What must the agent NOT guess?**
-   - Which parameters require explicit user configuration?
-   - Which architectural patterns are fixed?
-7. **Is a local dependency map required?**
-   - If severity is Level 2+, create a local `dependency-map.yaml` next to `spec.md`.
-8. **What checks prove the feature works correctly?**
-   - Unit tests, integration tests, contract compliance checks, or manual approvals.
 
-### Required Artifacts
+### Stop criteria
+- A valid local `dependency-map.yaml` exists, passes validation under `--strict`, and all expectations/verifiers have matching tests or check tasks defined.
 
-- `spec.md` (Intent and expectations)
-- `tasks.md` (Implementation check-steps)
-- `dependency-map.yaml` (Local Spec-DAG, Level 2+)
-- `event-flow.md` (Prose event sequence, Level 2+)
+### Agent must not guess
+- The agent must not guess user configuration parameters, architectural policies, or security boundary definitions. These require explicit human confirmation.
+
+### Commands to run
+```bash
+specdag validate specs/features/<feature-folder>/dependency-map.yaml --strict
+```
 
 ---
 
 ## 2. Multi-Feature Integration Flow
 
+### When to use
 Use this when multiple features communicate across boundaries via shared events, contracts, or approvals.
 
-### Question Sequence
+### Required artifacts
+- Decentralized local dependency maps for all participating features.
+- Global event/contract catalogs under `specs/events/` or `specs/contracts/`.
+- Assembled global map `dependency-map.global.json`.
 
-1. **Which local feature maps are involved?**
-   - What are the feature paths (e.g., `specs/features/012-agent-run`, `specs/features/020-bot-activation`)?
-2. **Which events or contracts connect them?**
-   - Which event is published by feature A and consumed by feature B?
-   - Which contract defines the payload of the communication?
-3. **Who produces and who consumes?**
-   - Verify producer and consumer fields in event/contract catalogs.
-4. **Are there node naming conflicts?**
-   - Do different features define the same node ID with conflicting titles or types?
-5. **Are there global cycles?**
-   - Does feature A trigger feature B, which triggers feature C, which loops back to feature A?
-6. **What is the downstream impact of a change?**
-   - If feature A's event structure changes, which downstream nodes in features B and C are affected?
-7. **Which durable truth needs syncing?**
-   - Ensure shared events and contracts are moved into global catalogs under `specs/events/` and `specs/contracts/`.
+### Questions to ask
+1. **Which local feature maps are involved?** What are the feature paths?
+2. **Which events or contracts connect them?** Who is the producer and who is the consumer?
+3. **Are there node naming conflicts?** Do different features define the same node ID with conflicting titles or types?
+4. **Are there global cycles?** Does feature A trigger feature B, which triggers feature C, which loops back to feature A?
+5. **What is the downstream impact of a change?** If feature A's event structure changes, which downstream nodes in features B and C are affected?
+6. **Which durable truth needs syncing?** Have shared events and contracts been moved into global catalogs?
 
-### Validation Tools
+### Stop criteria
+- `specdag assemble` compiles all maps without cycles or naming conflicts, and `check-catalogs` validates all event/contract catalog references.
 
-- `specdag assemble <dir>` (Detects cycles and naming conflicts)
-- `specdag impact <file> <node-id>` (Calculates downstream reachability)
-- `specdag check-catalogs <dir>` (Cross-checks against event/contract catalog frontmatter)
-- `specdag report <dir>` (Generates unified HTML report highlighting gaps)
+### Agent must not guess
+- The agent must not assume contract ownership, auto-resolve naming conflicts, or override global cycles. These require human architectural decisions.
+
+### Commands to run
+```bash
+specdag assemble specs/features/ -o specs/_generated/dependency-map.global.json
+specdag check-catalogs specs/
+```
 
 ---
 
 ## 3. Reconciliation Flow
 
+### When to use
 Use this when existing code, legacy specifications, runtime logs, or code knowledge graphs (e.g., GitNexus) disagree with the intended Spec-DAG.
 
-### Question Sequence
+### Required artifacts
+- `dependency-map.yaml` (Normative Spec-DAG)
+- Observed code graph (from GitNexus or similar tool) or execution traces
+- `decisions.md` (Reconciliation log)
 
-1. **What does the Spec-DAG intend?**
-   - Review the normative `dependency-map.yaml`. What is the desired behavior and obligation model?
-2. **What does the code actually implement?**
-   - Analyze the observed codebase using code intelligence graphs (e.g., GitNexus) or AST call-graphs.
-3. **What does the runtime execute?**
-   - Check logs, traces, or runtime events (`agent_run_trace`).
+### Questions to ask
+1. **What does the Spec-DAG intend?** Review the normative `dependency-map.yaml`. What is the desired behavior and obligation model?
+2. **What does the code actually implement?** Analyze the observed codebase using code intelligence graphs (e.g., GitNexus) or AST call-graphs.
+3. **What does the runtime execute?** Check logs, traces, or runtime events (`agent_run_trace`).
 4. **Where are the mismatches?**
    - Missing implementation (Spec calls for a job, but no code exists).
    - Undeclared dependency (Code calls service B, but the Spec-DAG does not declare it).
    - Missing verifier (Expectation exists in spec, but no test/verifier exists in code).
 5. **Is the code wrong, the spec wrong, or is a decision pending?**
-   - Do not silently rewrite the spec to match incorrect code.
-   - Do not refactor code to match an outdated spec.
-6. **What evidence justifies the reconciliation?**
-   - Capture log payloads, AST paths, or benchmark results.
-7. **What decision is accepted?**
-   - Record the outcome in `decisions.md` before updating either the spec or the codebase.
+6. **What evidence justifies the reconciliation?** Capture log payloads, AST paths, or benchmark results.
 
-### Core Rule of Reconciliation
+### Stop criteria
+- Every mismatch has been recorded as a decision in `decisions.md` and both the spec/map and codebase have been updated to reflect the agreed state.
 
-> **Never vibe-code to resolve mismatches.**
-> Record: `Evidence -> Implication -> Open Gap` first. Decide on the reconciliation path, document it, and then implement the change.
+### Agent must not guess
+- **Never vibe-code to resolve mismatches.** The agent must not silently rewrite the spec to match incorrect code, or refactor code to match an outdated spec. Record: `Evidence -> Implication -> Open Gap` first. Decide on the reconciliation path, document it, and then implement.
+
+### Commands to run
+```bash
+specdag doctor specs/
+specdag check-catalogs specs/
+```

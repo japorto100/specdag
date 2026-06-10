@@ -41,6 +41,7 @@ func AssembleDirectory(rootDir string, format string, includeGraphs bool) (strin
 
 	nodeMap := make(map[string]dag.Node)
 	var edges []dag.Edge
+	hasGraphTopology := false
 
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -59,9 +60,12 @@ func AssembleDirectory(rootDir string, format string, includeGraphs bool) (strin
 			}
 
 			// Assemble Topology Policy: Überspringen und Warnen, wenn Topology == "graph" und includeGraphs == false
-			if depMap.Graph.Topology == "graph" && !includeGraphs {
-				fmt.Fprintf(os.Stderr, "WARN: Skipping dependency map at %s because topology is 'graph' (use --include-graphs to include)\n", path)
-				return nil
+			if depMap.Graph.Topology == "graph" {
+				if !includeGraphs {
+					fmt.Fprintf(os.Stderr, "WARN: Skipping dependency map at %s because topology is 'graph' (use --include-graphs to include)\n", path)
+					return nil
+				}
+				hasGraphTopology = true
 			}
 
 			// 3. Nodes mergen und semantische Konflikte prüfen (ID, Typ und Titel)
@@ -85,6 +89,10 @@ func AssembleDirectory(rootDir string, format string, includeGraphs bool) (strin
 		return "", err
 	}
 
+	if hasGraphTopology {
+		globalGraph.Graph.Topology = "graph"
+	}
+
 	for _, node := range nodeMap {
 		globalGraph.Nodes = append(globalGraph.Nodes, node)
 	}
@@ -100,18 +108,20 @@ func AssembleDirectory(rootDir string, format string, includeGraphs bool) (strin
 		}
 	}
 
-	// 5. Globalen Graphen auf Zyklen checken
-	g := dag.NewGraph()
-	for _, n := range globalGraph.Nodes {
-		g.AddNode(n)
-	}
-	for _, e := range globalGraph.Edges {
-		g.AddEdge(e.From, e.To)
-	}
+	// 5. Globalen Graphen auf Zyklen checken (nur falls nicht topology == graph)
+	if globalGraph.Graph.Topology != "graph" {
+		g := dag.NewGraph()
+		for _, n := range globalGraph.Nodes {
+			g.AddNode(n)
+		}
+		for _, e := range globalGraph.Edges {
+			g.AddEdge(e.From, e.To)
+		}
 
-	cycle, err := g.FindCycles()
-	if err != nil {
-		return "", fmt.Errorf("global cycle detected! Cycle path: %v", cycle)
+		cycle, err := g.FindCycles()
+		if err != nil {
+			return "", fmt.Errorf("global cycle detected! Cycle path: %v", cycle)
+		}
 	}
 
 	// Formatierung

@@ -1,0 +1,12 @@
+{
+  "graph": {
+    "id": "global-system-map",
+    "kind": "spec_dependency",
+    "topology": "dag",
+    "status": "accepted",
+    "scope": "global",
+    "generated": true
+  },
+  "nodes": null,
+  "edges": null
+}

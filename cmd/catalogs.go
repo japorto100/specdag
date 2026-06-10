@@ -151,12 +151,30 @@ func RunCheckCatalogs(specsDir string) (int, int, error) {
 	return errorsCount, warningsCount, nil
 }
 
+var catalogsStrictFlag bool
+
 var checkCatalogsCmd = &cobra.Command{
 	Use:   "check-catalogs [specs_dir]",
 	Short: "Cross-checks referenced events and contracts against catalog files",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		specsDir := args[0]
+
+		if catalogsStrictFlag {
+			// TODO (v0.4.0): Implement strict schema properties validation.
+			// This will validate that the catalog frontmatter contains and validates:
+			// - domain
+			// - producer
+			// - consumers
+			// - schema_ref
+			// - privacy_class
+			// - idempotent
+			// - ordering
+			// - replay_safe
+			// - tenant_scoped
+			fmt.Println("INFO: Strict catalog validation enabled. (TODO: Schema properties validation will be enforced in v0.4.0)")
+		}
+
 		errorsCount, _, err := RunCheckCatalogs(specsDir)
 		if err != nil {
 			fmt.Printf("FAIL: %v\n", err)
@@ -166,4 +184,8 @@ var checkCatalogsCmd = &cobra.Command{
 			os.Exit(1)
 		}
 	},
+}
+
+func init() {
+	checkCatalogsCmd.Flags().BoolVar(&catalogsStrictFlag, "strict", false, "Enforce strict catalog frontmatter fields (TODO: v0.4.0)")
 }

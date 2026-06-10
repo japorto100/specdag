@@ -249,10 +249,16 @@ edges:
 			t.Errorf("expected only A to be assembled, got: %s", result1)
 		}
 
-		// Mit includeGraphs -> map-graph einbinden -> Zyklenfehler beim globalen DAG-Check
-		_, err = AssembleDirectory(tempDir, "json", true)
-		if err == nil {
-			t.Error("expected global cycle detection error when including cyclic graphs, but got nil")
+		// Mit includeGraphs -> map-graph einbinden -> globaler Graph bekommt topology: graph und erlaubt Zyklen
+		result2, err := AssembleDirectory(tempDir, "json", true)
+		if err != nil {
+			t.Fatalf("expected assembly to succeed with includeGraphs, got: %v", err)
+		}
+		if !containsNode(result2, "C") {
+			t.Error("expected C to be assembled in result2")
+		}
+		if !strings.Contains(result2, `"topology": "graph"`) {
+			t.Error("expected assembled map topology to be 'graph'")
 		}
 	})
 }
@@ -261,82 +267,267 @@ func containsNode(jsonStr, nodeID string) bool {
 	return strings.Contains(jsonStr, `"id": "`+nodeID+`"`) || strings.Contains(jsonStr, `"id":"`+nodeID+`"`)
 }
 
-func TestDoctorAndCatalogs(t *testing.T) {
-	t.Run("Doctor checks and severity warning", func(t *testing.T) {
+func TestDoctor(t *testing.T) {
+	t.Run("Doctor severity 0 (no map required)", func(t *testing.T) {
 		tempDir := t.TempDir()
-		
-		featuresDir := filepath.Join(tempDir, "features")
-		os.MkdirAll(featuresDir, 0755)
+		os.MkdirAll(filepath.Join(tempDir, "_generated"), 0755)
+		os.MkdirAll(filepath.Join(tempDir, "features", "f0"), 0755)
+		os.WriteFile(filepath.Join(tempDir, "features", "f0", "spec.md"), []byte("---\nseverity: 0\n---\n"), 0644)
 
-		// 1. Feature 1: Keine spec.md oder Map (severity unknown)
-		f1Dir := filepath.Join(featuresDir, "001-f1")
-		os.MkdirAll(f1Dir, 0755)
-
-		// 2. Feature 2: spec.md mit severity 3, aber keine Map
-		f2Dir := filepath.Join(featuresDir, "002-f2")
-		os.MkdirAll(f2Dir, 0755)
-		specContent := `---
-severity: 3
----
-# Feature 2 spec
-`
-		os.WriteFile(filepath.Join(f2Dir, "spec.md"), []byte(specContent), 0644)
-
-		// Doctor ausführen
-		errors, warnings, err := RunDoctor(tempDir)
+		errs, warns, err := RunDoctor(tempDir)
 		if err != nil {
 			t.Fatalf("RunDoctor failed: %v", err)
 		}
-
-		// Feature 2 verlangt Map, da severity >= 2, also Warnung
-		if warnings == 0 {
-			t.Errorf("expected warnings for missing dependency maps, got 0")
-		}
-		if errors > 0 {
-			t.Errorf("expected 0 errors, got %d", errors)
+		if errs != 0 || warns != 0 {
+			t.Errorf("expected 0 errors and 0 warnings, got %d errs, %d warns", errs, warns)
 		}
 	})
 
-	t.Run("Check catalogs name mismatch and status conflict", func(t *testing.T) {
+	t.Run("Doctor severity 1 (no map required)", func(t *testing.T) {
 		tempDir := t.TempDir()
-		
+		os.MkdirAll(filepath.Join(tempDir, "_generated"), 0755)
+		os.MkdirAll(filepath.Join(tempDir, "features", "f1"), 0755)
+		os.WriteFile(filepath.Join(tempDir, "features", "f1", "spec.md"), []byte("---\nlevel: 1\n---\n"), 0644)
+
+		errs, warns, err := RunDoctor(tempDir)
+		if err != nil {
+			t.Fatalf("RunDoctor failed: %v", err)
+		}
+		if errs != 0 || warns != 0 {
+			t.Errorf("expected 0 errors and 0 warnings, got %d errs, %d warns", errs, warns)
+		}
+	})
+
+	t.Run("Doctor severity 2 (map expected but missing)", func(t *testing.T) {
+		tempDir := t.TempDir()
+		os.MkdirAll(filepath.Join(tempDir, "_generated"), 0755)
+		os.MkdirAll(filepath.Join(tempDir, "features", "f2"), 0755)
+		os.WriteFile(filepath.Join(tempDir, "features", "f2", "spec.md"), []byte("---\nseverity: 2\n---\n"), 0644)
+
+		errs, warns, err := RunDoctor(tempDir)
+		if err != nil {
+			t.Fatalf("RunDoctor failed: %v", err)
+		}
+		if errs != 0 || warns != 1 {
+			t.Errorf("expected 0 errors and 1 warning, got %d errs, %d warns", errs, warns)
+		}
+	})
+
+	t.Run("Doctor severity 3 (map expected but missing)", func(t *testing.T) {
+		tempDir := t.TempDir()
+		os.MkdirAll(filepath.Join(tempDir, "_generated"), 0755)
+		os.MkdirAll(filepath.Join(tempDir, "features", "f3"), 0755)
+		os.WriteFile(filepath.Join(tempDir, "features", "f3", "spec.md"), []byte("---\nlevel: 3\n---\n"), 0644)
+
+		errs, warns, err := RunDoctor(tempDir)
+		if err != nil {
+			t.Fatalf("RunDoctor failed: %v", err)
+		}
+		if errs != 0 || warns != 1 {
+			t.Errorf("expected 0 errors and 1 warning, got %d errs, %d warns", errs, warns)
+		}
+	})
+
+	t.Run("Doctor unknown severity warns only", func(t *testing.T) {
+		tempDir := t.TempDir()
+		os.MkdirAll(filepath.Join(tempDir, "_generated"), 0755)
+		os.MkdirAll(filepath.Join(tempDir, "features", "funknown"), 0755)
+		os.WriteFile(filepath.Join(tempDir, "features", "funknown", "spec.md"), []byte("no frontmatter\n"), 0644)
+
+		errs, warns, err := RunDoctor(tempDir)
+		if err != nil {
+			t.Fatalf("RunDoctor failed: %v", err)
+		}
+		if errs != 0 || warns != 1 {
+			t.Errorf("expected 0 errors and 1 warning, got %d errs, %d warns", errs, warns)
+		}
+	})
+
+	t.Run("Doctor missing spec.md warns only", func(t *testing.T) {
+		tempDir := t.TempDir()
+		os.MkdirAll(filepath.Join(tempDir, "_generated"), 0755)
+		os.MkdirAll(filepath.Join(tempDir, "features", "fmissing"), 0755)
+
+		errs, warns, err := RunDoctor(tempDir)
+		if err != nil {
+			t.Fatalf("RunDoctor failed: %v", err)
+		}
+		if errs != 0 || warns != 1 {
+			t.Errorf("expected 0 errors and 1 warning, got %d errs, %d warns", errs, warns)
+		}
+	})
+}
+
+func TestCatalogs(t *testing.T) {
+	t.Run("CheckCatalogs valid ref", func(t *testing.T) {
+		tempDir := t.TempDir()
 		mapContent := `
 graph:
-  id: test-catalog-map
+  id: map-1
   kind: spec_dependency
   status: accepted
 nodes:
   - id: event.user.registered
     type: event
-    title: User Registered Event
-    status: accepted
+    title: User Registered
     ref: catalog/user-registered.md
 edges: []
 `
-		os.MkdirAll(filepath.Join(tempDir, "catalog"), 0755)
 		os.WriteFile(filepath.Join(tempDir, "dependency-map.yaml"), []byte(mapContent), 0644)
+		os.MkdirAll(filepath.Join(tempDir, "catalog"), 0755)
+		os.WriteFile(filepath.Join(tempDir, "catalog", "user-registered.md"), []byte("---\nname: user.registered\nstatus: accepted\n---\n"), 0644)
 
-		// Catalog-Datei mit Mismatch und Statuskonflikt erstellen
-		catalogContent := `---
-name: user.signed_up
-status: draft
----
-# User Registered
-`
-		os.WriteFile(filepath.Join(tempDir, "catalog", "user-registered.md"), []byte(catalogContent), 0644)
-
-		// CheckCatalogs ausführen
-		errors, warnings, err := RunCheckCatalogs(tempDir)
+		errs, warns, err := RunCheckCatalogs(tempDir)
 		if err != nil {
 			t.Fatalf("RunCheckCatalogs failed: %v", err)
 		}
-
-		// Name Mismatch und Statuskonflikt müssen Warnungen sein
-		if warnings == 0 {
-			t.Errorf("expected warnings for mismatches, got 0")
+		if errs != 0 || warns != 0 {
+			t.Errorf("expected 0 errors and 0 warnings, got %d errs, %d warns", errs, warns)
 		}
-		if errors > 0 {
-			t.Errorf("expected 0 errors, got %d", errors)
+	})
+
+	t.Run("CheckCatalogs missing ref", func(t *testing.T) {
+		tempDir := t.TempDir()
+		mapContent := `
+graph:
+  id: map-1
+  kind: spec_dependency
+  status: accepted
+nodes:
+  - id: event.user.registered
+    type: event
+    title: User Registered
+    ref: catalog/missing.md
+edges: []
+`
+		os.WriteFile(filepath.Join(tempDir, "dependency-map.yaml"), []byte(mapContent), 0644)
+
+		errs, warns, err := RunCheckCatalogs(tempDir)
+		if err != nil {
+			t.Fatalf("RunCheckCatalogs failed: %v", err)
+		}
+		if errs != 1 || warns != 0 {
+			t.Errorf("expected 1 error (missing ref) and 0 warnings, got %d errs, %d warns", errs, warns)
+		}
+	})
+
+	t.Run("CheckCatalogs name mismatch", func(t *testing.T) {
+		tempDir := t.TempDir()
+		mapContent := `
+graph:
+  id: map-1
+  kind: spec_dependency
+  status: accepted
+nodes:
+  - id: event.user.registered
+    type: event
+    title: User Registered
+    ref: catalog/user-registered.md
+edges: []
+`
+		os.WriteFile(filepath.Join(tempDir, "dependency-map.yaml"), []byte(mapContent), 0644)
+		os.MkdirAll(filepath.Join(tempDir, "catalog"), 0755)
+		// Name in catalog does not match cleanID (user.registered) or full ID (event.user.registered) or title (User Registered)
+		os.WriteFile(filepath.Join(tempDir, "catalog", "user-registered.md"), []byte("---\nname: user.signed_up\nstatus: accepted\n---\n"), 0644)
+
+		errs, warns, err := RunCheckCatalogs(tempDir)
+		if err != nil {
+			t.Fatalf("RunCheckCatalogs failed: %v", err)
+		}
+		if errs != 0 || warns != 1 {
+			t.Errorf("expected 0 errors and 1 warning (name mismatch), got %d errs, %d warns", errs, warns)
+		}
+	})
+
+	t.Run("CheckCatalogs status conflict", func(t *testing.T) {
+		tempDir := t.TempDir()
+		mapContent := `
+graph:
+  id: map-1
+  kind: spec_dependency
+  status: accepted
+nodes:
+  - id: event.user.registered
+    type: event
+    title: User Registered
+    ref: catalog/user-registered.md
+edges: []
+`
+		os.WriteFile(filepath.Join(tempDir, "dependency-map.yaml"), []byte(mapContent), 0644)
+		os.MkdirAll(filepath.Join(tempDir, "catalog"), 0755)
+		// Map status is accepted, but catalog status is draft
+		os.WriteFile(filepath.Join(tempDir, "catalog", "user-registered.md"), []byte("---\nname: user.registered\nstatus: draft\n---\n"), 0644)
+
+		errs, warns, err := RunCheckCatalogs(tempDir)
+		if err != nil {
+			t.Fatalf("RunCheckCatalogs failed: %v", err)
+		}
+		if errs != 0 || warns != 1 {
+			t.Errorf("expected 0 errors and 1 warning (status conflict), got %d errs, %d warns", errs, warns)
+		}
+	})
+}
+
+func TestRender(t *testing.T) {
+	t.Run("Mermaid ID collisions and label escaping", func(t *testing.T) {
+		id1 := dag.GenerateMermaidID("a-b")
+		id2 := dag.GenerateMermaidID("a.b")
+		id3 := dag.GenerateMermaidID("a_b")
+
+		if id1 == id2 || id2 == id3 || id1 == id3 {
+			t.Errorf("expected unique Mermaid IDs, got id1=%s, id2=%s, id3=%s", id1, id2, id3)
+		}
+
+		escaped := escapeMermaidLabel(`My "Awesome" Node`)
+		expected := `My \"Awesome\" Node`
+		if escaped != expected {
+			t.Errorf("expected '%s', got '%s'", expected, escaped)
+		}
+	})
+}
+
+func TestImpactAnalysis(t *testing.T) {
+	t.Run("Downstream transitive impact and unknown node", func(t *testing.T) {
+		tempDir := t.TempDir()
+		mapContent := `
+graph:
+  id: map-1
+  kind: spec_dependency
+  status: accepted
+nodes:
+  - id: A
+    type: intent
+    title: Node A
+  - id: B
+    type: expectation
+    title: Node B
+  - id: C
+    type: event
+    title: Node C
+edges:
+  - from: A
+    to: B
+    type: defines_success_for
+  - from: B
+    to: C
+    type: verified_by
+`
+		mapPath := filepath.Join(tempDir, "dependency-map.yaml")
+		os.WriteFile(mapPath, []byte(mapContent), 0644)
+
+		// Transitive impact from A -> should include B and C
+		list, err := GetImpactList(mapPath, "A")
+		if err != nil {
+			t.Fatalf("GetImpactList failed: %v", err)
+		}
+		if len(list) != 2 {
+			t.Errorf("expected 2 downstream affected nodes, got %d", len(list))
+		}
+
+		// Unknown node -> should fail with error
+		_, err = GetImpactList(mapPath, "UNKNOWN")
+		if err == nil {
+			t.Error("expected error for unknown node ID, got nil")
 		}
 	})
 }
