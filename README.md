@@ -19,13 +19,13 @@ A fast, offline CLI and Model Context Protocol (MCP) server for validating, asse
 Du musst specdag nicht global installieren. Du kannst es direkt ausführen:
 
 ```bash
-npx specdag --help
+npx @japorto100/specdag --help
 ```
 
 Oder installiere es global auf deinem System:
 
 ```bash
-npm install -g specdag
+npm install -g @japorto100/specdag
 specdag --help
 ```
 
@@ -45,20 +45,8 @@ go install github.com/japorto100/specdag@latest
 
 Trage specdag in deine MCP-Konfigurationsdatei (z. B. `mcpServerConfig.json` für Cursor oder Claude Desktop) ein:
 
-### Für npx (keine Go-Installation erforderlich):
+### A) Für npx (keine Go-Installation erforderlich):
 
-```json
-{
-  "mcpServers": {
-    "specdag": {
-      "command": "npx",
-      "args": ["-y", "specdag", "mcp"]
-    }
-  }
-}
-```
-
-*Falls du ein scoped Paket veröffentlichst hast:*
 ```json
 {
   "mcpServers": {
@@ -70,7 +58,7 @@ Trage specdag in deine MCP-Konfigurationsdatei (z. B. `mcpServerConfig.json` fü
 }
 ```
 
-### Für Go:
+### B) Für Go (falls go install verwendet wurde):
 
 ```json
 {
