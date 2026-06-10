@@ -5,22 +5,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/japorto100/specdag/dag"
-
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 // GetSummaryText liest die dependency-map.yaml und generiert einen Textreport.
 func GetSummaryText(filePath string) (string, error) {
-	data, err := os.ReadFile(filePath)
+	depMap, err := LoadDependencyMap(filePath)
 	if err != nil {
-		return "", fmt.Errorf("cannot read file %s: %w", filePath, err)
-	}
-
-	var depMap dag.DependencyMap
-	if err := yaml.Unmarshal(data, &depMap); err != nil {
-		return "", fmt.Errorf("unmarshal into struct failed: %w", err)
+		return "", err
 	}
 
 	var buf strings.Builder

@@ -1,0 +1,95 @@
+graph:
+  id: bot-activation
+  kind: spec_dependency
+  scope: feature
+  generated: false
+  topology: dag
+  status: draft
+
+nodes:
+  - id: intent.bot-activation.main
+    type: intent
+    title: "User can activate a paper-trading bot"
+    owner: "bot-team"
+    status: draft
+
+  - id: expectation.bot-activation.requires-approval-and-config
+    type: expectation
+    title: "Bot activation requires validated config and human approval"
+    owner: "bot-team"
+    status: draft
+
+  - id: contract.bot.config.v1
+    type: contract
+    title: "bot.config.v1"
+    ref: "specs/contracts/bot/bot.config.v1.md"
+    owner: "config-team"
+    status: accepted
+
+  - id: event.bot.config.proposed
+    type: event
+    title: "bot.config.proposed"
+    ref: "specs/events/bot/bot.config.proposed.md"
+    owner: "bot-team"
+    status: draft
+
+  - id: verifier.bot.risk-policy-check
+    type: verifier
+    title: "Risk policy check"
+    owner: "risk-team"
+    status: draft
+
+  - id: approval.bot.human-approval
+    type: approval
+    title: "Human approval granted"
+    owner: "ops-team"
+    status: draft
+
+  - id: command.bot.activate-paper-bot
+    type: command
+    title: "activate.paper.bot"
+    owner: "bot-team"
+    status: draft
+
+  - id: event.bot.activated
+    type: event
+    title: "bot.activated"
+    ref: "specs/events/bot/bot.activated.md"
+    owner: "bot-team"
+    status: draft
+
+edges:
+  - from: intent.bot-activation.main
+    to: expectation.bot-activation.requires-approval-and-config
+    type: defines_success_for
+    required: true
+
+  - from: contract.bot.config.v1
+    to: event.bot.config.proposed
+    type: produces
+    required: true
+
+  - from: event.bot.config.proposed
+    to: verifier.bot.risk-policy-check
+    type: verified_by
+    required: true
+
+  - from: verifier.bot.risk-policy-check
+    to: expectation.bot-activation.requires-approval-and-config
+    type: verifies
+    required: true
+
+  - from: event.bot.config.proposed
+    to: approval.bot.human-approval
+    type: requires_approval
+    required: true
+
+  - from: approval.bot.human-approval
+    to: command.bot.activate-paper-bot
+    type: triggers
+    required: true
+
+  - from: command.bot.activate-paper-bot
+    to: event.bot.activated
+    type: produces
+    required: true

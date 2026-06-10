@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/japorto100/specdag/dag"
 
@@ -51,20 +54,31 @@ func isValidStatus(s string) bool {
 	return allowed[s]
 }
 
-// ValidateFile prüft eine Map-Datei auf Schema, IDs und Zyklen.
-func ValidateFile(filePath string) error {
+// LoadDependencyMap lädt eine Map aus einer YAML- oder JSON-Datei.
+func LoadDependencyMap(filePath string) (*dag.DependencyMap, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		return fmt.Errorf("cannot read file %s: %w", filePath, err)
+		return nil, fmt.Errorf("cannot read file %s: %w", filePath, err)
 	}
 
-	// 1. In Go-Struktur parsen
 	var depMap dag.DependencyMap
-	if err := yaml.Unmarshal(data, &depMap); err != nil {
-		return fmt.Errorf("invalid YAML syntax or structure: %w", err)
-	}
+	ext := strings.ToLower(filepath.Ext(filePath))
+	isJSON := ext == ".json" || (len(data) > 0 && data[0] == '{')
 
-	// 2. Semantische Validierung
+	if isJSON {
+		if err := json.Unmarshal(data, &depMap); err != nil {
+			return nil, fmt.Errorf("invalid JSON syntax or structure in %s: %w", filePath, err)
+		}
+	} else {
+		if err := yaml.Unmarshal(data, &depMap); err != nil {
+			return nil, fmt.Errorf("invalid YAML syntax or structure in %s: %w", filePath, err)
+		}
+	}
+	return &depMap, nil
+}
+
+// ValidateDependencyMap validiert die Struktur einer geladenen Dependency Map.
+func ValidateDependencyMap(depMap *dag.DependencyMap) error {
 	if depMap.Graph.ID == "" {
 		return fmt.Errorf("graph.id is required")
 	}
@@ -131,7 +145,7 @@ func ValidateFile(filePath string) error {
 		}
 	}
 
-	// 3. Zyklenerkennung (wenn topology nicht explizit auf "graph" gesetzt ist)
+	// Zyklenerkennung (wenn topology nicht explizit auf "graph" gesetzt ist)
 	isDAG := depMap.Graph.Topology != "graph"
 	if isDAG {
 		g := dag.NewGraph()
@@ -151,8 +165,17 @@ func ValidateFile(filePath string) error {
 	return nil
 }
 
+// ValidateFile lädt und validiert eine Map-Datei.
+func ValidateFile(filePath string) error {
+	depMap, err := LoadDependencyMap(filePath)
+	if err != nil {
+		return err
+	}
+	return ValidateDependencyMap(depMap)
+}
+
 var validateCmd = &cobra.Command{
-	Use:   "validate [file.yaml]",
+	Use:   "validate [file.yaml|file.json]",
 	Short: "Validates structural schema and logic constraints of a dependency map",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {

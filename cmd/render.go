@@ -9,7 +9,6 @@ import (
 	"github.com/japorto100/specdag/dag"
 
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 var viewFlag string
@@ -154,7 +153,7 @@ func RenderMap(depMap *dag.DependencyMap, view string) (string, error) {
 		nodeRendered = true
 		id := dag.GenerateMermaidID(node.ID)
 		title := escapeMermaidLabel(node.Title)
-		
+
 		label := fmt.Sprintf("%s (%s)", title, node.Type)
 		if node.Owner != "" {
 			label = fmt.Sprintf("%s [%s]", label, escapeMermaidLabel(node.Owner))
@@ -212,17 +211,12 @@ func RenderMap(depMap *dag.DependencyMap, view string) (string, error) {
 
 // RenderFile liest die dependency-map.yaml und gibt den Mermaid-String zurück, gefiltert nach view.
 func RenderFile(filePath string, view string) (string, error) {
-	data, err := os.ReadFile(filePath)
+	depMap, err := LoadDependencyMap(filePath)
 	if err != nil {
-		return "", fmt.Errorf("cannot read file %s: %w", filePath, err)
+		return "", err
 	}
 
-	var depMap dag.DependencyMap
-	if err := yaml.Unmarshal(data, &depMap); err != nil {
-		return "", fmt.Errorf("unmarshal into struct failed: %w", err)
-	}
-
-	return RenderMap(&depMap, view)
+	return RenderMap(depMap, view)
 }
 
 func getNode(nodes []dag.Node, id string) *dag.Node {

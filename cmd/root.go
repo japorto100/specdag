@@ -28,4 +28,6 @@ func init() {
 	rootCmd.AddCommand(summaryCmd)
 	rootCmd.AddCommand(impactCmd)
 	rootCmd.AddCommand(reportCmd)
+	rootCmd.AddCommand(doctorCmd)
+	rootCmd.AddCommand(checkCatalogsCmd)
 }

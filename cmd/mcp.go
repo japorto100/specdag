@@ -40,7 +40,7 @@ var mcpCmd = &cobra.Command{
 		)
 		s.AddTool(assembleTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			dirPath, _ := req.RequireString("dirPath")
-			output, err := AssembleDirectory(dirPath)
+			output, err := AssembleDirectory(dirPath, "json")
 			if err != nil {
 				return mcp.NewToolResultText(fmt.Sprintf("FAIL: %v", err)), nil
 			}

@@ -159,6 +159,22 @@ Add specdag to your MCP configuration file (e.g., `mcpServerConfig.json` for Cur
 
 ---
 
+## MCP Tools
+
+`specdag` exposes the following tools to AI agents:
+
+| MCP Tool | Purpose | Parameters |
+|---|---|---|
+| `validate_map` | Validates a local dependency-map.yaml/json file for correctness and cycles. | `filePath` (string, required) |
+| `assemble_maps` | Walk directory, merge all feature dependency maps and check for global cycles/conflicts. | `dirPath` (string, required) |
+| `render_mermaid` | Renders a local map into a Mermaid markdown diagram string. | `filePath` (string, required), `view` (string) |
+| `summary_map` | Provides a textual summary of metrics, blocked approvals, orphans, and critical path. | `filePath` (string, required) |
+| `analyze_impact` | Calculates all downstream nodes affected by changing a specific node ID in a map. | `filePath` (string, required), `nodeId` (string, required) |
+| `generate_report` | Generates a static HTML review report for a dependency map file or specs directory. | `targetPath` (string, required), `outputPath` (string, required) |
+| `get_rules` | Returns the full ESDD (Event-Spec-Driven Development) skill rules and templates. | None |
+
+---
+
 ## CLI Commands
 
 ### 1. Validate locally
@@ -171,6 +187,10 @@ specdag validate specs/features/012-agent-run/dependency-map.yaml
 Recursively searches a directory for all local maps, validates them, and merges them conflict-free:
 ```bash
 specdag assemble specs/features/ -o specs/_generated/dependency-map.global.json
+```
+Use `--format yaml` to output the assembled map in YAML format:
+```bash
+specdag assemble specs/features/ --format yaml -o specs/_generated/dependency-map.global.yaml
 ```
 
 ### 3. Render Mermaid
@@ -192,10 +212,31 @@ specdag impact specs/features/012-agent-run/dependency-map.yaml event.document.u
 ```
 
 ### 6. Generate HTML Report
-Generates a static HTML review report (KPIs, tables, Mermaid diagrams, filters) for a feature map or an assembled directory:
+Generates a static HTML review report (KPIs, tables, Mermaid diagrams, filters, gaps and warnings) for a feature map or an assembled directory:
 ```bash
 specdag report specs/features/ -o specs/_generated/dependency-report.html
 ```
+
+### 7. Run Doctor Checks
+Analyzes the specifications directory structure for consistency, missing files, stale outputs, and broken references:
+```bash
+specdag doctor specs/
+```
+
+### 8. Cross-check Catalogs
+Checks referenced events and contracts in your dependency maps against their catalog Markdown templates to ensure consistent status, IDs, and exists properties:
+```bash
+specdag check-catalogs specs/
+```
+
+---
+
+## Examples
+
+You can find the following examples in the [examples/](file:///home/lipfi2/code/specdag/examples/) directory:
+* [bot-activation.dependency-map.yaml](file:///home/lipfi2/code/specdag/examples/bot-activation.dependency-map.yaml): The main Bot Activation ESDD example.
+* [research-import.dependency-map.yaml](file:///home/lipfi2/code/specdag/examples/research-import.dependency-map.yaml): The secondary Research Document Ingestion/RAG example.
+* [dependency-report.example.html](file:///home/lipfi2/code/specdag/examples/dependency-report.example.html): A static HTML report artifact showing all metrics, mermaid rendering, and gap warnings.
 
 ---
 

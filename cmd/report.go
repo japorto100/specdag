@@ -10,13 +10,18 @@ import (
 	"github.com/japorto100/specdag/dag"
 
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 type ReportApproval struct {
 	ApprovalNodeID string
 	TargetNodeID   string
 	Condition      string
+}
+
+type ReportGap struct {
+	Type     string // "GAP" or "WARNING"
+	Category string // "Orphan Node", "Missing Reference", "Unverified Expectation", "Approval Gap"
+	Message  string
 }
 
 type ReportData struct {
@@ -36,6 +41,7 @@ type ReportData struct {
 	CriticalPath     []string
 	Nodes            []dag.Node
 	MermaidCode      string
+	Gaps             []ReportGap
 }
 
 // GenerateReportData aggregates data from a file or directory for the HTML report.
@@ -51,13 +57,13 @@ func GenerateReportData(targetPath string) (*ReportData, error) {
 
 	if fi.IsDir() {
 		// Assembling directory
-		jsonStr, err := AssembleDirectory(targetPath)
+		jsonStr, err := AssembleDirectory(targetPath, "json")
 		if err != nil {
 			validationStatus = "FAIL"
 			validationMsg = err.Error()
 			// minimal skeleton setup
 			depMap.Graph.ID = "global-system-map"
-			depMap.Graph.Kind = "global_dependency"
+			depMap.Graph.Kind = "spec_dependency"
 			depMap.Graph.Topology = "dag"
 			depMap.Graph.Status = "draft"
 		} else {
@@ -71,18 +77,18 @@ func GenerateReportData(targetPath string) (*ReportData, error) {
 			validationStatus = "FAIL"
 			validationMsg = err.Error()
 		}
-		data, err := os.ReadFile(targetPath)
+		loadedMap, err := LoadDependencyMap(targetPath)
 		if err != nil {
-			return nil, fmt.Errorf("cannot read file %s: %w", targetPath, err)
+			return nil, err
 		}
-		if err := yaml.Unmarshal(data, &depMap); err != nil {
-			return nil, fmt.Errorf("invalid YAML file: %w", err)
-		}
+		depMap = *loadedMap
 	}
 
 	if depMap.Graph.Topology == "" {
 		depMap.Graph.Topology = "dag"
 	}
+
+	var gaps []ReportGap
 
 	// 1. Orphans
 	hasEdges := make(map[string]bool)
@@ -94,13 +100,47 @@ func GenerateReportData(targetPath string) (*ReportData, error) {
 	for _, n := range depMap.Nodes {
 		if !hasEdges[n.ID] {
 			orphans = append(orphans, n)
+			gaps = append(gaps, ReportGap{
+				Type:     "WARNING",
+				Category: "Orphan Node",
+				Message:  fmt.Sprintf("Node '%s' (%s) is not connected to any other node.", n.ID, n.Type),
+			})
 		}
 	}
 
-	// 2. Approvals
+	// 2. Missing Refs
+	for _, n := range depMap.Nodes {
+		if n.Ref == "" && (n.Type == "event" || n.Type == "contract" || n.Type == "verifier" || n.Type == "approval") {
+			gaps = append(gaps, ReportGap{
+				Type:     "WARNING",
+				Category: "Missing Reference",
+				Message:  fmt.Sprintf("Node '%s' (%s) has no 'ref' pointing to its contract, code implementation, or spec file.", n.ID, n.Type),
+			})
+		}
+	}
+
+	// 3. Approval Gaps
 	var approvals []ReportApproval
+	approvalNodesWithIncoming := make(map[string]bool)
 	for _, e := range depMap.Edges {
 		if e.Type == "requires_approval" {
+			toNode := getNode(depMap.Nodes, e.To)
+			if toNode == nil {
+				gaps = append(gaps, ReportGap{
+					Type:     "GAP",
+					Category: "Approval Gap",
+					Message:  fmt.Sprintf("Edge '%s -> %s' requires approval but target node does not exist.", e.From, e.To),
+				})
+			} else if toNode.Type != "approval" {
+				gaps = append(gaps, ReportGap{
+					Type:     "GAP",
+					Category: "Approval Gap",
+					Message:  fmt.Sprintf("Edge '%s -> %s' requires approval but target node '%s' is of type '%s' (must be 'approval').", e.From, e.To, e.To, toNode.Type),
+				})
+			} else {
+				approvalNodesWithIncoming[e.To] = true
+			}
+
 			approvals = append(approvals, ReportApproval{
 				ApprovalNodeID: e.To,
 				TargetNodeID:   e.From,
@@ -109,18 +149,22 @@ func GenerateReportData(targetPath string) (*ReportData, error) {
 		}
 	}
 
-	// 3. Unverified Expectations
+	for _, n := range depMap.Nodes {
+		if n.Type == "approval" && !approvalNodesWithIncoming[n.ID] {
+			gaps = append(gaps, ReportGap{
+				Type:     "WARNING",
+				Category: "Approval Gap",
+				Message:  fmt.Sprintf("Approval node '%s' is defined but has no incoming 'requires_approval' edge.", n.ID),
+			})
+		}
+	}
+
+	// 4. Unverified Expectations
 	verifiedExpectations := make(map[string]bool)
 	for _, e := range depMap.Edges {
 		if e.Type == "verifies" {
-			var fromType string
-			for _, n := range depMap.Nodes {
-				if n.ID == e.From {
-					fromType = n.Type
-					break
-				}
-			}
-			if fromType == "verifier" || fromType == "event" {
+			fromNode := getNode(depMap.Nodes, e.From)
+			if fromNode != nil && (fromNode.Type == "verifier" || fromNode.Type == "event") {
 				verifiedExpectations[e.To] = true
 			}
 		}
@@ -130,11 +174,16 @@ func GenerateReportData(targetPath string) (*ReportData, error) {
 		if n.Type == "expectation" {
 			if !verifiedExpectations[n.ID] {
 				unverified = append(unverified, n)
+				gaps = append(gaps, ReportGap{
+					Type:     "GAP",
+					Category: "Unverified Expectation",
+					Message:  fmt.Sprintf("Expectation '%s' is not verified by any verifier or event node.", n.ID),
+				})
 			}
 		}
 	}
 
-	// 4. Critical Path
+	// 5. Critical Path
 	adj := make(map[string][]string)
 	for _, e := range depMap.Edges {
 		adj[e.From] = append(adj[e.From], e.To)
@@ -203,6 +252,7 @@ func GenerateReportData(targetPath string) (*ReportData, error) {
 		CriticalPath:     paths,
 		Nodes:            depMap.Nodes,
 		MermaidCode:      mermaidCode,
+		Gaps:             gaps,
 	}, nil
 }
 
@@ -302,6 +352,8 @@ const htmlTemplate = `<!doctype html>
       font-size: 12px;
       color: var(--muted);
     }
+    .badge.bad { background: #3b1717; color: var(--bad); }
+    .badge.warn { background: #3b3217; color: var(--warn); }
     .good { color: var(--good); }
     .warn { color: var(--warn); }
     .bad { color: var(--bad); }
@@ -345,6 +397,21 @@ const htmlTemplate = `<!doctype html>
 
   <main>
     <aside>
+      {{if .Gaps}}
+      <section style="border-color: var(--bad); background: #1c141d;">
+        <h2 style="color: var(--bad); margin-bottom: 10px;">Gaps &amp; Warnings ({{len .Gaps}})</h2>
+        <div style="max-height: 250px; overflow-y: auto;">
+          {{range .Gaps}}
+            <div style="border-bottom: 1px solid var(--border); padding: 8px 0; line-height: 1.3;">
+              <span class="badge {{if eq .Type "GAP"}}bad{{else}}warn{{end}}" style="font-weight: bold; border: none; padding: 1px 6px; font-size: 10px;">{{.Type}}</span>
+              <strong style="font-size: 12px; margin-left: 4px; color: var(--text);">{{.Category}}</strong>
+              <div style="font-size: 12px; color: var(--muted); margin-top: 4px;">{{.Message}}</div>
+            </div>
+          {{end}}
+        </div>
+      </section>
+      {{end}}
+
       <section>
         <h2>Review summary</h2>
         <table>
@@ -496,8 +563,8 @@ const htmlTemplate = `<!doctype html>
 var reportOutputFlag string
 
 var reportCmd = &cobra.Command{
-	Use:   "report [file.yaml | dir]",
-	Short: "Generates a beautiful static HTML review report for a dependency map or directory",
+	Use:   "report [file.yaml | file.json | dir]",
+	Short: "Generates a static HTML review report for a dependency map or directory",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		targetPath := args[0]

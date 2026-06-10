@@ -32,10 +32,12 @@ type Edge struct {
 
 type DependencyMap struct {
 	Graph struct {
-		ID       string `yaml:"id" json:"id"`
-		Kind     string `yaml:"kind" json:"kind"`
-		Topology string `yaml:"topology,omitempty" json:"topology,omitempty"` // "dag" (default) oder "graph"
-		Status   string `yaml:"status" json:"status"`
+		ID        string `yaml:"id" json:"id"`
+		Kind      string `yaml:"kind" json:"kind"`
+		Topology  string `yaml:"topology,omitempty" json:"topology,omitempty"` // "dag" (default) oder "graph"
+		Status    string `yaml:"status" json:"status"`
+		Scope     string `yaml:"scope,omitempty" json:"scope,omitempty"`       // "feature" oder "global"
+		Generated bool   `yaml:"generated,omitempty" json:"generated,omitempty"`
 	} `yaml:"graph" json:"graph"`
 	Nodes []Node `yaml:"nodes" json:"nodes"`
 	Edges []Edge `yaml:"edges" json:"edges"`
@@ -69,7 +71,7 @@ func GenerateMermaidID(nodeID string) string {
 	return fmt.Sprintf("n_%x", h.Sum(nil))[:12]
 }
 
-// FindCycles prüft den Graphen auf Zyklen. 
+// FindCycles prüft den Graphen auf Zyklen.
 // Gibt bei Erfolg den zyklischen Pfad zurück (z.B. [A, B, C, A]).
 func (g *Graph) FindCycles() ([]string, error) {
 	colors := make(map[string]Color)

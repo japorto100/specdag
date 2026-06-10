@@ -4,23 +4,14 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/japorto100/specdag/dag"
-
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 // GetImpactList berechnet alle Knoten, die transitiv vom targetNodeID abhängen.
 func GetImpactList(filePath string, targetNodeID string) ([]string, error) {
-	data, err := os.ReadFile(filePath)
+	depMap, err := LoadDependencyMap(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("cannot read file %s: %w", filePath, err)
-	}
-
-	var depMap dag.DependencyMap
-	// yaml.Unmarshal kann sowohl YAML als auch JSON parsen, da JSON eine Untermenge von YAML ist.
-	if err := yaml.Unmarshal(data, &depMap); err != nil {
-		return nil, fmt.Errorf("unmarshal failed: %w", err)
+		return nil, err
 	}
 
 	// Prüfen, ob der Zielknoten existiert
