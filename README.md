@@ -2,66 +2,50 @@
 
 A fast CLI and Model Context Protocol (MCP) server for validating, assembling, and analyzing dependency maps in Event-Spec-Driven Development (ESDD). Once installed, the Go binary runs fully offline.
 
-## Approach: Event-Spec-Driven Development + DAGs
+## Approach: Normative Spec-DAG Grounded in Evidence
 
-`specdag` is built around a simple idea:
+`specdag` is built around a clear distinction between intended behavior (normative) and observed reality (descriptive):
 
-> Intent and expectations define what should be true.  
-> Events and contracts define how systems communicate.  
-> A dependency DAG defines what depends on what, what is blocked, and what must be verified before work is considered safe.
+> **Intent and expectations** define what should be true.  
+> **Events and contracts** define how systems communicate.  
+> A **dependency DAG** defines what depends on what, what is blocked, and what must be verified.
 
-This makes `specdag` a small control layer for Event-Spec-Driven Development (ESDD). It is not a runtime workflow engine and it is not a code knowledge graph. Instead, it validates declarative dependency maps that live next to feature specs.
+This makes `specdag` a **normative control layer** for Event-Spec-Driven Development (ESDD). It does not reverse-engineer your code automatically, nor is it a runtime workflow engine. Instead, it models your **intended (desired) dependencies**, grounded in repository evidence.
 
-A typical feature folder may contain:
+### Three Layers of Truth
 
-```text
-specs/features/012-agent-run/
-  spec.md
-  event-flow.md
-  dependency-map.yaml
-  contracts/
-  evidence/
-  tasks.md
-```
+To avoid semantic drift and agent confusion, the ESDD workflow distinguishes between three states:
 
-The local `dependency-map.yaml` describes the feature’s intended dependency structure: intents, expectations, events, commands, jobs, artifacts, verifiers, approvals, and contracts.
+1. **Intended / Normative (What should be true):** Defined by feature intents, expectations, accepted contracts, and safety policies. This is modeled in `dependency-map.yaml`.
+2. **Observed / Descriptive (What actually exists):** The current implementation, tests, log traces, and code graphs (observed via tools like **GitNexus** or `agent_run_trace`).
+3. **Reconciled / Accepted (What we agree is the new truth):** Handled through `decisions.md` and durable schemas in `events/`, `contracts/`, or `domains/`.
 
-Global maps are generated, not hand-authored:
+### The Golden Rule of Spec-DAGs
+> **Code may inform the Spec-DAG, but code does not automatically define the Spec-DAG.**  
+> If the actual code structure and the Spec-DAG disagree, do not silently rewrite the map. Record the mismatch as an **Evidence Gap** or **Decision** so human owners can decide.
 
-```text
-specs/features/*/dependency-map.yaml
-        ↓
-specdag assemble
-        ↓
-specs/_generated/dependency-map.global.json
-```
-
-Local maps are the editable source of truth. Global maps, Mermaid diagrams, HTML reports, and impact reports are generated review artifacts.
+---
 
 ## How specdag fits with code knowledge graphs
 
-`specdag` models the intended system behavior before or during implementation:
+`specdag` defines the intended architecture, while code intelligence engines like **GitNexus** analyze the actual codebase:
 
 ```text
-specdag = desired architecture, feature intent, event contracts, dependency DAG
+specdag    = Normative Spec-DAG (desired architecture, event contracts)
+GitNexus   = Observed Code Graph (actual files, symbols, call chains, dependencies)
+Run Trace  = Observed Runtime Trace (what happened during execution)
 ```
 
-Code knowledge graph tools such as **GitNexus** can then be used to inspect the actual repository structure:
+### The ESDD Workflow
 
-```text
-GitNexus = actual code structure, files, symbols, call chains, code dependencies
-```
-
-The intended workflow is:
-
-1. **Define** intent, expectations, events, and contracts.
-2. **Add or update** `dependency-map.yaml` for Level 2/3 features.
-3. **Validate** the map with `specdag`.
-4. **Assemble** global dependency maps when multiple features interact.
-5. **Use** a code knowledge graph tool such as GitNexus to locate the actual implementation points.
-6. **Compare** the desired Spec-DAG with the actual code structure.
-7. **Implement** changes.
-8. **Re-run** `specdag` validation, tests, and review reports.
+1. **Define** intent, expectations, events, and contracts in specs.
+2. **Model** the intended dependencies in a local `dependency-map.yaml` next to feature specs.
+3. **Ground** the map with explicit code/spec references (`node.ref`).
+4. **Validate** the map using `specdag validate`.
+5. **Assemble** local maps into a global Spec-DAG when multiple features interact.
+6. **Use** a code knowledge graph tool (e.g., GitNexus) to locate where the code implements or violates these dependencies.
+7. **Record** any mismatch as an *Evidence Gap* or *Decision* rather than silently updating the spec.
+8. **Implement** changes and verify with tests and `specdag report`.
 
 In short:
 * `specdag` defines what **should** be true.
