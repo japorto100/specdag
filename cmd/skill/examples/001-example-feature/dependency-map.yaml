@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=../../references/schema.json
+graph:
+  id: example-user-registration
+  kind: spec_dependency
+  topology: dag # Zyklenprüfung aktiv
+  status: draft
+
+nodes:
+  # 1. Absichten & Erfolgsbedingungen
+  - id: intent.register-user
+    type: intent
+    title: "User can register a new account"
+    owner: "product-team"
+  - id: expectation.user-created
+    type: expectation
+    title: "User record exists in DB with hashed password"
+    ref: "specs/domains/auth/vocabulary.md"
+  - id: expectation.welcome-email-sent
+    type: expectation
+    title: "User receives a welcome confirmation email"
+    owner: "marketing-team"
+
+  # 2. Auszuführende Arbeiten
+  - id: job.create-user-record
+    type: job
+    title: "Validate input data and write to Postgres"
+  - id: job.send-welcome-email
+    type: job
+    title: "Generate template and push email to SMTP queue"
+
+  # 3. Verträge & Schnittstellen
+  - id: event.user.registered
+    type: event
+    title: "user.registered"
+    ref: "specs/events/schemas/user.registered.schema.json"
+
+  - id: event.welcome-email.delivered
+    type: event
+    title: "welcome-email.delivered"
+
+  # 4. Daten & Zustand
+  - id: artifact.user-db-record
+    type: artifact
+    title: "PostgreSQL user record"
+
+edges:
+  # Intent definiert Erfolgsbedingungen
+  - from: intent.register-user
+    to: expectation.user-created
+    type: defines_success_for
+    required: true
+  - from: intent.register-user
+    to: expectation.welcome-email-sent
+    type: defines_success_for
+
+  # Intent stößt den ersten Arbeitsschritt an
+  - from: intent.register-user
+    to: job.create-user-record
+    type: triggers
+
+  # Der Job erzeugt die Daten und feuert das Event
+  - from: job.create-user-record
+    to: artifact.user-db-record
+    type: produces
+  - from: job.create-user-record
+    to: event.user.registered
+    type: produces
+
+  # Das Event verifiziert die erste Erwartung
+  - from: event.user.registered
+    to: expectation.user-created
+    type: verifies
+
+  # Der E-Mail-Versand wird nur getriggert, wenn der User Marketing-Emails erlaubt hat
+  - from: event.user.registered
+    to: job.send-welcome-email
+    type: triggers
+    condition: "user.marketing_consent == true"
+
+  # Der E-Mail-Job erzeugt das Zustellungs-Event
+  - from: job.send-welcome-email
+    to: event.welcome-email.delivered
+    type: produces
+
+  # Das Zustellungs-Event verifiziert die zweite Erwartung
+  - from: event.welcome-email.delivered
+    to: expectation.welcome-email-sent
+    type: verifies

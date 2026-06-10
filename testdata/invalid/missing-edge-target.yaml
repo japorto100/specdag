@@ -1,0 +1,15 @@
+graph:
+  id: missing-edge-target-invalid
+  kind: spec_dependency
+  topology: dag
+  status: draft
+
+nodes:
+  - id: node.a
+    type: job
+    title: "A"
+
+edges:
+  - from: node.a
+    to: node.missing
+    type: triggers

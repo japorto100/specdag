@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DependencyMap",
+  "type": "object",
+  "properties": {
+    "graph": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string", "enum": ["spec_dependency", "event_flow", "agent_run_trace", "execution_workflow"] },
+        "topology": { "type": "string", "enum": ["dag", "graph"] },
+        "status": { "type": "string", "enum": ["draft", "accepted", "superseded"] }
+      },
+      "required": ["id", "kind", "status"]
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string", "enum": ["intent", "expectation", "event", "command", "query", "contract", "job", "artifact", "verifier", "approval"] },
+          "title": { "type": "string" },
+          "ref": { "type": "string" },
+          "owner": { "type": "string" },
+          "status": { "type": "string", "enum": ["draft", "accepted", "superseded"] }
+        },
+        "required": ["id", "type", "title"]
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "type": { "type": "string", "enum": ["defines_success_for", "triggers", "produces", "consumes", "verified_by", "verifies", "requires_approval"] },
+          "condition": { "type": "string" },
+          "required": { "type": "boolean" }
+        },
+        "required": ["from", "to", "type"]
+      }
+    }
+  },
+  "required": ["graph", "nodes", "edges"]
+}

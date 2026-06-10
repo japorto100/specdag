@@ -1,0 +1,4 @@
+interface:
+  display_name: "Intent-Event-Contract Development"
+  short_description: "Ground agentic work in intent, evidence, events, and contracts"
+  default_prompt: "Use intent-event-contract-driven development for this feature."

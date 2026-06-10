@@ -1,0 +1,82 @@
+graph:
+  id: research-import
+  kind: spec_dependency
+  topology: dag
+  status: draft
+
+nodes:
+  - id: feature.research-import.intent.main
+    type: intent
+    title: "User can import research documents"
+    owner: "research"
+    status: draft
+
+  - id: feature.research-import.expectation.sourced-output
+    type: expectation
+    title: "Generated output contains only sourced claims"
+    owner: "research"
+    status: draft
+
+  - id: event.document.uploaded
+    type: event
+    title: "document.uploaded"
+    ref: "specs/events/document/document.uploaded.md"
+    owner: "document"
+    status: accepted
+
+  - id: feature.research-import.job.extract-text
+    type: job
+    title: "Extract text from uploaded document"
+    owner: "research"
+    status: draft
+
+  - id: artifact.document.extracted-text
+    type: artifact
+    title: "Extracted text artifact"
+    owner: "document"
+    status: draft
+
+  - id: verifier.research.citation-check
+    type: verifier
+    title: "Citation verifier"
+    owner: "research"
+    status: draft
+
+  - id: approval.research.publish-report
+    type: approval
+    title: "Human approval before publishing report"
+    owner: "research"
+    status: draft
+
+edges:
+  - from: feature.research-import.intent.main
+    to: feature.research-import.expectation.sourced-output
+    type: defines_success_for
+    required: true
+
+  - from: event.document.uploaded
+    to: feature.research-import.job.extract-text
+    type: triggers
+    condition: "file.mime_type in supported_types"
+    required: true
+
+  - from: feature.research-import.job.extract-text
+    to: artifact.document.extracted-text
+    type: produces
+    required: true
+
+  - from: artifact.document.extracted-text
+    to: verifier.research.citation-check
+    type: verified_by
+    required: true
+
+  - from: verifier.research.citation-check
+    to: feature.research-import.expectation.sourced-output
+    type: verifies
+    required: true
+
+  - from: feature.research-import.job.extract-text
+    to: approval.research.publish-report
+    type: requires_approval
+    condition: "report.visibility == public"
+    required: false

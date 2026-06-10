@@ -1,0 +1,17 @@
+# Binaries
+specdag
+specdag.exe
+specdag_konzept.md
+
+# OS/IDE files
+.idea/
+.vscode/
+.DS_Store
+
+# Generated test artifacts
+testdata/report.html
+
+# Local vendor directories in npm wrapper
+npm/vendor/
+node_modules/
+package-lock.json

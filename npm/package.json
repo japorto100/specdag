@@ -1,0 +1,28 @@
+{
+  "name": "specdag",
+  "version": "0.2.0",
+  "description": "SpecDAG CLI and MCP server for Event-Spec-Driven Development",
+  "license": "MIT",
+  "homepage": "https://github.com/japorto100/specdag",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/japorto100/specdag.git"
+  },
+  "bugs": {
+    "url": "https://github.com/japorto100/specdag/issues"
+  },
+  "bin": {
+    "specdag": "bin/specdag.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "files": [
+    "bin/",
+    "scripts/",
+    "vendor/"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
