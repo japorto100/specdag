@@ -36,7 +36,7 @@ type DependencyMap struct {
 		Kind      string `yaml:"kind" json:"kind"`
 		Topology  string `yaml:"topology,omitempty" json:"topology,omitempty"` // "dag" (default) oder "graph"
 		Status    string `yaml:"status" json:"status"`
-		Scope     string `yaml:"scope,omitempty" json:"scope,omitempty"`       // "feature" oder "global"
+		Scope     string `yaml:"scope,omitempty" json:"scope,omitempty"` // "feature" oder "global"
 		Generated bool   `yaml:"generated,omitempty" json:"generated,omitempty"`
 	} `yaml:"graph" json:"graph"`
 	Nodes []Node `yaml:"nodes" json:"nodes"`

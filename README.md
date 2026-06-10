@@ -172,6 +172,11 @@ Add specdag to your MCP configuration file (e.g., `mcpServerConfig.json` for Cur
 | `analyze_impact` | Calculates all downstream nodes affected by changing a specific node ID in a map. | `filePath` (string, required), `nodeId` (string, required) |
 | `generate_report` | Generates a static HTML review report for a dependency map file or specs directory. | `targetPath` (string, required), `outputPath` (string, required) |
 | `get_rules` | Returns the full ESDD (Event-Spec-Driven Development) skill rules and templates. | None |
+| `start_feature_flow` | Provides ESDD checklist and question flow for starting a single-feature implementation. | `featurePath` (string, required) |
+| `start_integration_flow` | Provides ESDD checklist for integrating multiple features via shared events/contracts. | `dirPath` (string, required) |
+| `start_reconciliation_flow` | Provides ESDD checklist for reconciling discrepancies between Spec-DAG and code. | `featurePath` (string, required) |
+| `review_dependency_map` | Reviews a local dependency map from a methodic ESDD perspective (intent, verifiers, etc.). | `filePath` (string, required) |
+| `migrate_feature_to_dag` | Provides step-by-step guide for migrating legacy specs into an ESDD Spec-DAG. | `featurePath` (string, required) |
 
 ---
 

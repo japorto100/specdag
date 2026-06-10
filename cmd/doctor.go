@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var doctorCmd = &cobra.Command{
@@ -16,12 +17,12 @@ var doctorCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		specsDir := args[0]
-		
+
 		fmt.Printf("=== SpecDAG Doctor: Analyzing %s ===\n\n", specsDir)
-		
+
 		errorsCount := 0
 		warningsCount := 0
-		
+
 		// Helper function to report issues
 		reportIssue := func(isError bool, msg string) {
 			if isError {
@@ -49,9 +50,9 @@ var doctorCmd = &cobra.Command{
 		// 2. Suche nach generated files und deren Alter
 		var latestLocalMod time.Time
 		localMapsCount := 0
-		
+
 		var generatedFiles []string
-		
+
 		// Wir wandern durch das Verzeichnis
 		err = filepath.Walk(specsDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
@@ -68,13 +69,37 @@ var doctorCmd = &cobra.Command{
 					mapYAML := filepath.Join(path, "dependency-map.yaml")
 					mapYML := filepath.Join(path, "dependency-map.yml")
 					mapJSON := filepath.Join(path, "dependency-map.json")
-					
+
 					_, errYAML := os.Stat(mapYAML)
 					_, errYML := os.Stat(mapYML)
 					_, errJSON := os.Stat(mapJSON)
-					
-					if os.IsNotExist(errYAML) && os.IsNotExist(errYML) && os.IsNotExist(errJSON) {
-						reportIssue(false, fmt.Sprintf("Feature folder '%s' has no dependency-map.yaml/json. Every feature should have a dependency map.", rel))
+
+					// Versuche severity aus spec.md Frontmatter zu lesen
+					specMDPath := filepath.Join(path, "spec.md")
+					severity := 2 // default to 2 (Level 2) if not found/unparseable
+
+					if content, err := os.ReadFile(specMDPath); err == nil {
+						str := string(content)
+						if strings.HasPrefix(str, "---") {
+							parts := strings.SplitN(str, "---", 3)
+							if len(parts) >= 3 {
+								var fm map[string]interface{}
+								if err := yaml.Unmarshal([]byte(parts[1]), &fm); err == nil {
+									if sevVal, ok := fm["severity"]; ok {
+										switch v := sevVal.(type) {
+										case int:
+											severity = v
+										case float64:
+											severity = int(v)
+										}
+									}
+								}
+							}
+						}
+					}
+
+					if severity >= 2 && os.IsNotExist(errYAML) && os.IsNotExist(errYML) && os.IsNotExist(errJSON) {
+						reportIssue(false, fmt.Sprintf("Feature folder '%s' (severity: %d) has no dependency-map.yaml/json. Level 2/3 features require a dependency map.", rel, severity))
 					}
 				}
 			} else {
@@ -85,7 +110,7 @@ var doctorCmd = &cobra.Command{
 					if info.ModTime().After(latestLocalMod) {
 						latestLocalMod = info.ModTime()
 					}
-					
+
 					// Prüfen, ob es ein event-flow.md im selben Ordner gibt
 					dir := filepath.Dir(path)
 					flowMD := filepath.Join(dir, "event-flow.md")
@@ -125,7 +150,7 @@ var doctorCmd = &cobra.Command{
 			}
 			return nil
 		})
-		
+
 		if err != nil {
 			reportIssue(true, fmt.Sprintf("Error walking specs directory: %v", err))
 		}

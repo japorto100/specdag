@@ -125,15 +125,13 @@ func AssembleDirectory(rootDir string, format string) (string, error) {
 	return string(outputBytes), nil
 }
 
-
-
 var assembleCmd = &cobra.Command{
 	Use:   "assemble [dir]",
 	Short: "Assembles multiple feature dependency maps (dependency-map.yaml/json) into a single global map",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		rootDir := args[0]
-		
+
 		// Falls das Format nicht explizit gesetzt ist, aber der Output eine yaml-Endung hat,
 		// wählen wir automatisch yaml als Format.
 		format := formatFlag
