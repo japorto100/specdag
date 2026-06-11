@@ -49,11 +49,21 @@ func isValidEdgeType(t string) bool {
 // Hilfsfunktion für erlaubte Status
 func isValidStatus(s string) bool {
 	allowed := map[string]bool{
-		"draft":      true,
-		"accepted":   true,
-		"superseded": true,
+		"draft":       true,
+		"accepted":    true,
+		"implemented": true,
+		"partial":     true,
+		"blocked":     true,
+		"deferred":    true,
+		"superseded":  true,
+		"archived":    true,
+		"failed":      true,
 	}
 	return allowed[s]
+}
+
+func validStatusList() string {
+	return "draft, accepted, implemented, partial, blocked, deferred, superseded, archived, or failed"
 }
 
 // LoadDependencyMap lädt eine Map aus einer YAML- oder JSON-Datei.
@@ -116,7 +126,7 @@ func validateGraphMetadata(depMap *dag.DependencyMap) error {
 	}
 
 	if !isValidStatus(depMap.Graph.Status) {
-		return fmt.Errorf("invalid graph.status: '%s' (must be draft, accepted, or superseded)", depMap.Graph.Status)
+		return fmt.Errorf("invalid graph.status: '%s' (must be %s)", depMap.Graph.Status, validStatusList())
 	}
 	return nil
 }
@@ -141,7 +151,7 @@ func validateNodes(nodes []dag.Node) (map[string]dag.Node, error) {
 			return nil, fmt.Errorf("node '%s' has an empty title", node.ID)
 		}
 		if node.Status != "" && !isValidStatus(node.Status) {
-			return nil, fmt.Errorf("invalid node status for '%s': '%s'", node.ID, node.Status)
+			return nil, fmt.Errorf("invalid node status for '%s': '%s' (must be %s)", node.ID, node.Status, validStatusList())
 		}
 		nodeMap[node.ID] = node
 	}

@@ -9,7 +9,10 @@
         "id": { "type": "string" },
         "kind": { "type": "string", "enum": ["spec_dependency", "event_flow", "agent_run_trace", "execution_workflow"] },
         "topology": { "type": "string", "enum": ["dag", "graph"] },
-        "status": { "type": "string", "enum": ["draft", "accepted", "superseded"] }
+        "status": {
+          "type": "string",
+          "enum": ["draft", "accepted", "implemented", "partial", "blocked", "deferred", "superseded", "archived", "failed"]
+        }
       },
       "required": ["id", "kind", "status"]
     },
@@ -23,7 +26,10 @@
           "title": { "type": "string" },
           "ref": { "type": "string" },
           "owner": { "type": "string" },
-          "status": { "type": "string", "enum": ["draft", "accepted", "superseded"] },
+          "status": {
+            "type": "string",
+            "enum": ["draft", "accepted", "implemented", "partial", "blocked", "deferred", "superseded", "archived", "failed"]
+          },
           "hash": { "type": "string" }
         },
         "required": ["id", "type", "title"]

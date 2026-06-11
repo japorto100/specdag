@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/japorto100/specdag/dag"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -89,71 +90,7 @@ Please execute these steps:
 	)
 	s.AddTool(reviewMapTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		filePath, _ := req.RequireString("filePath")
-
-		// Laden und grobe checks
-		depMap, err := LoadDependencyMap(filePath)
-		if err != nil {
-			return mcp.NewToolResultText(fmt.Sprintf("FAIL: Map cannot be parsed: %v", err)), nil
-		}
-
-		var suggestions []string
-		hasIntent := false
-		hasExpectation := false
-		hasVerifier := false
-		hasApproval := false
-
-		for _, n := range depMap.Nodes {
-			switch n.Type {
-			case "intent":
-				hasIntent = true
-			case "expectation":
-				hasExpectation = true
-			case "verifier":
-				hasVerifier = true
-			case "approval":
-				hasApproval = true
-			}
-		}
-
-		if !hasIntent {
-			suggestions = append(suggestions, "- Add an 'intent' node to define the human goal of the feature.")
-		}
-		if !hasExpectation {
-			suggestions = append(suggestions, "- Add an 'expectation' node to define success/safety invariants.")
-		}
-		if !hasVerifier && hasExpectation {
-			suggestions = append(suggestions, "- Add a 'verifier' node and link it to your 'expectation' via a 'verifies' edge.")
-		}
-		if !hasApproval {
-			suggestions = append(suggestions, "- Check if a human-in-the-loop 'approval' node is required for this feature.")
-		}
-
-		// Kanten-Checks
-		requiresApprovalCount := 0
-		for _, e := range depMap.Edges {
-			if e.Type == "requires_approval" {
-				requiresApprovalCount++
-			}
-		}
-		if requiresApprovalCount == 0 && hasApproval {
-			suggestions = append(suggestions, "- You defined an approval node but no 'requires_approval' edge targets it.")
-		}
-
-		review := fmt.Sprintf(`# SpecDAG Methodic Review: %s
-
-Status: %s | Nodes: %d | Edges: %d
-
-Methodic Recommendations:
-%s
-
-Review Checklist:
-- [ ] Does every event represent a true past-tense system occurrence?
-- [ ] Are all verifiers linked to expectations (no isolated check-boxes)?
-- [ ] Are contracts linked to events representing their schema propagation?
-- [ ] Is there any evidence link that is currently undocumented?
-`, filePath, depMap.Graph.Status, len(depMap.Nodes), len(depMap.Edges), strings.Join(suggestions, "\n"))
-
-		return mcp.NewToolResultText(review), nil
+		return mcp.NewToolResultText(buildDependencyMapReview(filePath)), nil
 	})
 
 	// 12. migrate_feature_to_dag Tool registrieren
@@ -181,4 +118,135 @@ Please execute these steps to migrate legacy feature files:
 `, featurePath, featurePath)
 		return mcp.NewToolResultText(guide), nil
 	})
+}
+
+func buildDependencyMapReview(filePath string) string {
+	depMap, err := LoadDependencyMap(filePath)
+	if err != nil {
+		return fmt.Sprintf("FAIL: Map cannot be parsed: %v", err)
+	}
+
+	suggestions := collectMapReviewSuggestions(depMap)
+
+	return fmt.Sprintf(`# SpecDAG Methodic Review: %s
+
+Status: %s | Nodes: %d | Edges: %d
+
+Methodic Recommendations:
+%s
+
+Review Checklist:
+- [ ] Does every event represent a true past-tense system occurrence?
+- [ ] Are all verifiers linked to expectations (no isolated check-boxes)?
+- [ ] Are contracts linked to events representing their schema propagation?
+- [ ] Is there any evidence link that is currently undocumented?
+`, filePath, depMap.Graph.Status, len(depMap.Nodes), len(depMap.Edges), strings.Join(suggestions, "\n"))
+}
+
+func collectMapReviewSuggestions(depMap *dag.DependencyMap) []string {
+	var suggestions []string
+	hasIntent := false
+	hasExpectation := false
+	hasVerifier := false
+	hasApproval := false
+	incomingByType := make(map[string]map[string]int)
+	outgoingByType := make(map[string]map[string]int)
+	partialOrBlockedNodes := 0
+
+	for _, n := range depMap.Nodes {
+		if isIncompleteStatus(n.Status) {
+			partialOrBlockedNodes++
+		}
+		switch n.Type {
+		case "intent":
+			hasIntent = true
+		case "expectation":
+			hasExpectation = true
+		case "verifier":
+			hasVerifier = true
+		case "approval":
+			hasApproval = true
+		}
+	}
+
+	if !hasIntent {
+		suggestions = append(suggestions, "- Add an 'intent' node to define the human goal of the feature.")
+	}
+	if !hasExpectation {
+		suggestions = append(suggestions, "- Add an 'expectation' node to define success/safety invariants.")
+	}
+	if !hasVerifier && hasExpectation {
+		suggestions = append(suggestions, "- Add a 'verifier' node and link it to your 'expectation' via a 'verifies' edge.")
+	}
+	if !hasApproval {
+		suggestions = append(suggestions, "- Check if a human-in-the-loop 'approval' node is required for this feature.")
+	}
+
+	requiresApprovalCount := 0
+	for _, e := range depMap.Edges {
+		if e.Type == "requires_approval" {
+			requiresApprovalCount++
+		}
+		addEdgeCount(outgoingByType, e.From, e.Type)
+		addEdgeCount(incomingByType, e.To, e.Type)
+	}
+	if requiresApprovalCount == 0 && hasApproval {
+		suggestions = append(suggestions, "- You defined an approval node but no 'requires_approval' edge targets it.")
+	}
+	suggestions = append(suggestions, reviewNodeEvidence(depMap, incomingByType, outgoingByType)...)
+	if isEvidenceClaimStatus(depMap.Graph.Status) && partialOrBlockedNodes > 0 {
+		suggestions = append(suggestions, fmt.Sprintf("- Graph status is '%s' but %d node(s) are partial/blocked/deferred/failed; avoid over-claiming completion.", depMap.Graph.Status, partialOrBlockedNodes))
+	}
+	if len(suggestions) == 0 {
+		suggestions = append(suggestions, "- No obvious methodic gaps detected. Still run declared verifiers and observed-code checks before claiming completion.")
+	}
+	return suggestions
+}
+
+func reviewNodeEvidence(depMap *dag.DependencyMap, incomingByType map[string]map[string]int, outgoingByType map[string]map[string]int) []string {
+	var suggestions []string
+	for _, n := range depMap.Nodes {
+		switch n.Type {
+		case "expectation":
+			if incomingByType[n.ID]["verifies"] == 0 {
+				suggestions = append(suggestions, fmt.Sprintf("- Expectation '%s' has no incoming 'verifies' edge from a verifier/event.", n.ID))
+			}
+		case "verifier":
+			if outgoingByType[n.ID]["verifies"] == 0 {
+				suggestions = append(suggestions, fmt.Sprintf("- Verifier '%s' does not verify any expectation.", n.ID))
+			}
+		case "artifact", "event", "job":
+			if isEvidenceClaimStatus(n.Status) && outgoingByType[n.ID]["verified_by"] == 0 {
+				suggestions = append(suggestions, fmt.Sprintf("- %s '%s' is status '%s' but has no 'verified_by' edge.", n.Type, n.ID, n.Status))
+			}
+		}
+		if shouldPreferRef(n.Type) && n.Ref == "" {
+			suggestions = append(suggestions, fmt.Sprintf("- %s '%s' has no ref; durable evidence nodes should point at a spec, code file, test, contract, or output.", n.Type, n.ID))
+		}
+	}
+	return suggestions
+}
+
+func addEdgeCount(index map[string]map[string]int, nodeID string, edgeType string) {
+	if index[nodeID] == nil {
+		index[nodeID] = make(map[string]int)
+	}
+	index[nodeID][edgeType]++
+}
+
+func isEvidenceClaimStatus(status string) bool {
+	return status == "accepted" || status == "implemented"
+}
+
+func isIncompleteStatus(status string) bool {
+	return status == "partial" || status == "blocked" || status == "deferred" || status == "failed"
+}
+
+func shouldPreferRef(nodeType string) bool {
+	switch nodeType {
+	case "event", "contract", "artifact", "verifier":
+		return true
+	default:
+		return false
+	}
 }

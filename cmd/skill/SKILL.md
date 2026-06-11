@@ -99,8 +99,20 @@ For an example layout, read `references/fullstack-event-layout.md`.
    - Define user-visible goal, non-goals, requirements, acceptance criteria,
      risks, and open questions.
    - Keep product decisions separate from implementation details.
-   - Use precise status labels: `draft`, `accepted`, `superseded`, `archived`,
-     `spike`, `deferred`.
+- Use precise status labels: `draft`, `accepted`, `superseded`, `archived`,
+  `spike`, `deferred`.
+
+Supported dependency-map statuses are `draft`, `accepted`, `implemented`,
+`partial`, `blocked`, `deferred`, `superseded`, `archived`, and `failed`.
+Use them narrowly:
+
+- `accepted`: the spec, decision, contract, or evidence claim is approved.
+- `implemented`: code/artifact exists and is linked to verifier evidence.
+- `partial`: some evidence exists, but the expectation is not fully satisfied.
+- `blocked` / `deferred`: a human, provider, policy, credential, or runtime
+  dependency prevents completion.
+- `superseded` / `archived`: preserved for provenance, not current truth.
+- `failed`: an executed verifier or runtime check disproved the claim.
 
 7. **Plan** - map behavior to modules/files/contracts, name dependency and
    migration risks, and select verification gates by risk.
@@ -244,6 +256,9 @@ level.
 - Do not mark a task complete just because a node status says `accepted`.
   `accepted` means the spec/evidence is approved; completion still requires
   verifier outputs.
+- Do not let a graph with `partial`, `blocked`, `deferred`, or `failed` nodes
+  report completion without an explicit gap/decision explaining why the
+  remaining risk is acceptable.
 - If multiple maps or branches mention the same feature label, require stable
   unique node IDs (for example `feature.F57.import` and
   `feature.F57.renderer`). Same IDs with different titles, types, or contracts

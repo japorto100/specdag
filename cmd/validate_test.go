@@ -69,6 +69,58 @@ nodes: []
 	})
 }
 
+func TestValidateDependencyMapAcceptsImplementationStatuses(t *testing.T) {
+	statuses := []string{
+		"draft",
+		"accepted",
+		"implemented",
+		"partial",
+		"blocked",
+		"deferred",
+		"superseded",
+		"archived",
+		"failed",
+	}
+
+	for _, status := range statuses {
+		t.Run(status, func(t *testing.T) {
+			dm := &dag.DependencyMap{}
+			dm.Graph.ID = "status-test"
+			dm.Graph.Kind = "spec_dependency"
+			dm.Graph.Status = status
+			dm.Nodes = []dag.Node{
+				{ID: "intent.status", Type: "intent", Title: "Status intent", Status: status},
+				{ID: "expectation.status", Type: "expectation", Title: "Status expectation", Status: status},
+			}
+			dm.Edges = []dag.Edge{
+				{From: "intent.status", To: "expectation.status", Type: "defines_success_for"},
+			}
+
+			if err := ValidateDependencyMap(dm, false); err != nil {
+				t.Fatalf("expected status %q to be valid: %v", status, err)
+			}
+		})
+	}
+}
+
+func TestReviewStatusHelpers(t *testing.T) {
+	for _, status := range []string{"accepted", "implemented"} {
+		if !isEvidenceClaimStatus(status) {
+			t.Fatalf("expected %s to be an evidence-claim status", status)
+		}
+	}
+	for _, status := range []string{"partial", "blocked", "deferred", "failed"} {
+		if !isIncompleteStatus(status) {
+			t.Fatalf("expected %s to be an incomplete status", status)
+		}
+	}
+	for _, nodeType := range []string{"event", "contract", "artifact", "verifier"} {
+		if !shouldPreferRef(nodeType) {
+			t.Fatalf("expected %s to prefer refs", nodeType)
+		}
+	}
+}
+
 func TestStrictValidationRules(t *testing.T) {
 	tests := []struct {
 		name        string
