@@ -1,7 +1,7 @@
 package dag
 
 import (
-	"crypto/sha1"
+	"crypto/sha256"
 	"fmt"
 )
 
@@ -20,6 +20,7 @@ type Node struct {
 	Ref    string `yaml:"ref,omitempty" json:"ref,omitempty"`
 	Owner  string `yaml:"owner,omitempty" json:"owner,omitempty"`
 	Status string `yaml:"status,omitempty" json:"status,omitempty"`
+	Hash   string `yaml:"hash,omitempty" json:"hash,omitempty"`
 }
 
 type Edge struct {
@@ -63,10 +64,10 @@ func (g *Graph) AddEdge(from, to string) {
 	g.Adj[from] = append(g.Adj[from], to)
 }
 
-// GenerateMermaidID erzeugt eine stabile, kollisionsfreie 10-stellige ID
-// für Mermaid-Diagramme, basierend auf dem SHA-1 Hash der Node-ID.
+// GenerateMermaidID erzeugt eine stabile, kollisionsarme 10-stellige ID
+// für Mermaid-Diagramme, basierend auf dem SHA-256 Hash der Node-ID.
 func GenerateMermaidID(nodeID string) string {
-	h := sha1.New()
+	h := sha256.New()
 	h.Write([]byte(nodeID))
 	return fmt.Sprintf("n_%x", h.Sum(nil))[:12]
 }

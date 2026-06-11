@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/japorto100/specdag/dag"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -13,142 +14,152 @@ import (
 func RunCheckCatalogs(specsDir string) (int, int, error) {
 	fmt.Printf("=== SpecDAG Catalog Check: Analyzing %s ===\n\n", specsDir)
 
-	errorsCount := 0
-	warningsCount := 0
-
-	reportIssue := func(isError bool, msg string) {
-		if isError {
-			fmt.Printf("[ERROR] %s\n", msg)
-			errorsCount++
-		} else {
-			fmt.Printf("[WARN]  %s\n", msg)
-			warningsCount++
-		}
-	}
-
-	// Hilfsfunktion: Frontmatter aus einer MD-Datei extrahieren
-	parseFrontmatter := func(filePath string) (map[string]interface{}, error) {
-		content, err := os.ReadFile(filePath)
-		if err != nil {
-			return nil, err
-		}
-
-		str := string(content)
-		if !strings.HasPrefix(str, "---") {
-			return nil, fmt.Errorf("no frontmatter found (missing starting ---)")
-		}
-
-		parts := strings.SplitN(str, "---", 3)
-		if len(parts) < 3 {
-			return nil, fmt.Errorf("invalid frontmatter syntax")
-		}
-
-		var data map[string]interface{}
-		if err := yaml.Unmarshal([]byte(parts[1]), &data); err != nil {
-			return nil, err
-		}
-		return data, nil
-	}
-
-	err := filepath.Walk(specsDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		name := info.Name()
-		if !info.IsDir() && (name == "dependency-map.yaml" || name == "dependency-map.yml" || name == "dependency-map.json") {
-			depMap, err := LoadDependencyMap(path)
-			if err != nil {
-				// validate hat das schon gefangen, aber zur sicherheit
-				return nil
-			}
-
-			for _, node := range depMap.Nodes {
-				if node.Type == "event" || node.Type == "contract" {
-					if node.Ref == "" {
-						reportIssue(false, fmt.Sprintf("Node '%s' (%s) in %s has no 'ref' pointing to its catalog file.", node.ID, node.Type, name))
-						continue
-					}
-
-					// Auflösen des Pfades
-					refPath := node.Ref
-					var finalPath string
-					if _, err := os.Stat(refPath); err == nil {
-						finalPath = refPath
-					} else {
-						// Map Ordner rel
-						mapDir := filepath.Dir(path)
-						relPath := filepath.Join(mapDir, refPath)
-						if _, err := os.Stat(relPath); err == nil {
-							finalPath = relPath
-						} else {
-							// Specs Ordner rel
-							specsRel := filepath.Join(specsDir, "..", refPath)
-							if _, err := os.Stat(specsRel); err == nil {
-								finalPath = specsRel
-							}
-						}
-					}
-
-					if finalPath == "" {
-						reportIssue(true, fmt.Sprintf("Broken reference: Node '%s' (%s) in %s points to '%s', but file does not exist.", node.ID, node.Type, name, node.Ref))
-						continue
-					}
-
-					// MD-Frontmatter check
-					if strings.HasSuffix(strings.ToLower(finalPath), ".md") {
-						fm, err := parseFrontmatter(finalPath)
-						if err != nil {
-							reportIssue(false, fmt.Sprintf("Catalog file '%s' (referenced by '%s') has invalid or missing frontmatter: %v", finalPath, node.ID, err))
-							continue
-						}
-
-						// Name vergleichen
-						fmName, _ := fm["name"].(string)
-						if fmName == "" {
-							reportIssue(false, fmt.Sprintf("Catalog file '%s' has no 'name' property in frontmatter.", finalPath))
-						} else {
-							// Event ID ist z.B. event.document.uploaded, oder contract.bot.config.v1
-							// Frontmatter Name ist z.B. document.uploaded
-							cleanID := node.ID
-							cleanID = strings.TrimPrefix(cleanID, "event.")
-							cleanID = strings.TrimPrefix(cleanID, "contract.")
-
-							if fmName != cleanID && fmName != node.ID && fmName != node.Title {
-								reportIssue(false, fmt.Sprintf("Name mismatch: Catalog file '%s' defines name '%s', but map node ID is '%s' and Title is '%s'.", finalPath, fmName, node.ID, node.Title))
-							}
-						}
-
-						// Status vergleichen
-						fmStatus, _ := fm["status"].(string)
-						if fmStatus != "" {
-							mapNodeStatus := node.Status
-							if mapNodeStatus == "" {
-								mapNodeStatus = depMap.Graph.Status
-							}
-
-							if mapNodeStatus == "accepted" && (fmStatus == "draft" || fmStatus == "deprecated") {
-								reportIssue(false, fmt.Sprintf("Status conflict: Map node '%s' is '%s', but catalog file '%s' status is '%s'.", node.ID, mapNodeStatus, finalPath, fmStatus))
-							}
-						}
-					}
-				}
-			}
-		}
-		return nil
+	issues := &issueCounter{}
+	err := filepath.Walk(specsDir, func(path string, info os.FileInfo, walkErr error) error {
+		return checkCatalogWalkPath(specsDir, path, info, walkErr, issues)
 	})
 
 	if err != nil {
-		reportIssue(true, fmt.Sprintf("Error walking directory: %v", err))
+		issues.Report(true, fmt.Sprintf("Error walking directory: %v", err))
 	}
 
 	fmt.Printf("\n=== Catalog Check Summary ===\n")
-	if errorsCount == 0 && warningsCount == 0 {
+	if issues.Errors == 0 && issues.Warnings == 0 {
 		fmt.Println("PASS: All referenced events and contracts match their catalog definitions perfectly!")
 	} else {
-		fmt.Printf("FAIL: Found %d error(s) and %d warning(s).\n", errorsCount, warningsCount)
+		fmt.Printf("FAIL: Found %d error(s) and %d warning(s).\n", issues.Errors, issues.Warnings)
 	}
 
-	return errorsCount, warningsCount, nil
+	return issues.Errors, issues.Warnings, nil
+}
+
+type issueCounter struct {
+	Errors   int
+	Warnings int
+}
+
+func (i *issueCounter) Report(isError bool, msg string) {
+	if isError {
+		fmt.Printf("[ERROR] %s\n", msg)
+		i.Errors++
+		return
+	}
+	fmt.Printf("[WARN]  %s\n", msg)
+	i.Warnings++
+}
+
+func checkCatalogWalkPath(specsDir string, path string, info os.FileInfo, walkErr error, issues *issueCounter) error {
+	if walkErr != nil {
+		return fmt.Errorf("walk %s: %w", path, walkErr)
+	}
+	if info.IsDir() || !isDependencyMapFilename(info.Name()) {
+		return nil
+	}
+
+	depMap, err := LoadDependencyMap(path)
+	if err != nil {
+		return fmt.Errorf("load dependency map %s: %w", path, err)
+	}
+
+	for _, node := range depMap.Nodes {
+		if node.Type == "event" || node.Type == "contract" {
+			checkCatalogNode(specsDir, path, info.Name(), depMap, node, issues)
+		}
+	}
+	return nil
+}
+
+func checkCatalogNode(specsDir string, mapPath string, mapName string, depMap *dag.DependencyMap, node dag.Node, issues *issueCounter) {
+	if node.Ref == "" {
+		issues.Report(false, fmt.Sprintf("Node '%s' (%s) in %s has no 'ref' pointing to its catalog file.", node.ID, node.Type, mapName))
+		return
+	}
+
+	finalPath := resolveSpecRef(specsDir, mapPath, node.Ref)
+	if finalPath == "" {
+		issues.Report(true, fmt.Sprintf("Broken reference: Node '%s' (%s) in %s points to '%s', but file does not exist.", node.ID, node.Type, mapName, node.Ref))
+		return
+	}
+	if strings.HasSuffix(strings.ToLower(finalPath), ".md") {
+		checkCatalogFrontmatter(finalPath, depMap, node, issues)
+	}
+}
+
+func resolveSpecRef(specsDir string, mapPath string, refPath string) string {
+	candidates := []string{
+		refPath,
+		filepath.Join(filepath.Dir(mapPath), refPath),
+		filepath.Join(specsDir, "..", refPath),
+	}
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func parseFrontmatter(filePath string) (map[string]any, error) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("read frontmatter file %s: %w", filePath, err)
+	}
+
+	str := string(content)
+	if !strings.HasPrefix(str, "---") {
+		return nil, fmt.Errorf("no frontmatter found (missing starting ---)")
+	}
+
+	parts := strings.SplitN(str, "---", 3)
+	if len(parts) < 3 {
+		return nil, fmt.Errorf("invalid frontmatter syntax")
+	}
+
+	var data map[string]any
+	if err := yaml.Unmarshal([]byte(parts[1]), &data); err != nil {
+		return nil, fmt.Errorf("parse frontmatter YAML in %s: %w", filePath, err)
+	}
+	return data, nil
+}
+
+func checkCatalogFrontmatter(finalPath string, depMap *dag.DependencyMap, node dag.Node, issues *issueCounter) {
+	frontmatter, err := parseFrontmatter(finalPath)
+	if err != nil {
+		issues.Report(false, fmt.Sprintf("Catalog file '%s' (referenced by '%s') has invalid or missing frontmatter: %v", finalPath, node.ID, err))
+		return
+	}
+
+	checkCatalogName(finalPath, frontmatter, node, issues)
+	checkCatalogStatus(finalPath, frontmatter, depMap, node, issues)
+}
+
+func checkCatalogName(finalPath string, frontmatter map[string]any, node dag.Node, issues *issueCounter) {
+	frontmatterName, _ := frontmatter["name"].(string)
+	if frontmatterName == "" {
+		issues.Report(false, fmt.Sprintf("Catalog file '%s' has no 'name' property in frontmatter.", finalPath))
+		return
+	}
+
+	cleanID := strings.TrimPrefix(node.ID, "event.")
+	cleanID = strings.TrimPrefix(cleanID, "contract.")
+	if frontmatterName != cleanID && frontmatterName != node.ID && frontmatterName != node.Title {
+		issues.Report(false, fmt.Sprintf("Name mismatch: Catalog file '%s' defines name '%s', but map node ID is '%s' and Title is '%s'.", finalPath, frontmatterName, node.ID, node.Title))
+	}
+}
+
+func checkCatalogStatus(finalPath string, frontmatter map[string]any, depMap *dag.DependencyMap, node dag.Node, issues *issueCounter) {
+	frontmatterStatus, _ := frontmatter["status"].(string)
+	if frontmatterStatus == "" {
+		return
+	}
+
+	mapNodeStatus := node.Status
+	if mapNodeStatus == "" {
+		mapNodeStatus = depMap.Graph.Status
+	}
+	if mapNodeStatus == "accepted" && (frontmatterStatus == "draft" || frontmatterStatus == "deprecated") {
+		issues.Report(false, fmt.Sprintf("Status conflict: Map node '%s' is '%s', but catalog file '%s' status is '%s'.", node.ID, mapNodeStatus, finalPath, frontmatterStatus))
+	}
 }
 
 var catalogsStrictFlag bool

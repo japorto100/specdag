@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"os"
@@ -38,6 +39,45 @@ func registerCoreTools(s *server.MCPServer) {
 			return mcp.NewToolResultText(fmt.Sprintf("FAIL: %v", err)), nil
 		}
 		return mcp.NewToolResultText(output), nil
+	})
+
+	hashTool := mcp.NewTool("hash_map",
+		mcp.WithDescription("Computes a deterministic SHA-256 Merkle-DAG attestation for a dependency map, including referenced evidence files."),
+		mcp.WithString("filePath", mcp.Required(), mcp.Description("Path to the dependency-map.yaml or dependency-map.json file")),
+	)
+	s.AddTool(hashTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		filePath, _ := req.RequireString("filePath")
+		attestation, err := ComputeMerkleAttestation(filePath)
+		if err != nil {
+			return mcp.NewToolResultText(fmt.Sprintf("FAIL: %v", err)), nil
+		}
+		output, err := json.MarshalIndent(attestation, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultText(fmt.Sprintf("FAIL: %v", err)), nil
+		}
+		return mcp.NewToolResultText(string(output)), nil
+	})
+
+	verifyTool := mcp.NewTool("verify_attestation",
+		mcp.WithDescription("Validates a dependency map and verifies that its Merkle root matches an expected hash."),
+		mcp.WithString("filePath", mcp.Required(), mcp.Description("Path to the dependency-map.yaml or dependency-map.json file")),
+		mcp.WithString("expectedRoot", mcp.Required(), mcp.Description("Expected Merkle root hash, with optional sha256: prefix")),
+	)
+	s.AddTool(verifyTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		filePath, _ := req.RequireString("filePath")
+		expectedRoot, _ := req.RequireString("expectedRoot")
+		attestation, verified, err := VerifyMerkleRoot(filePath, expectedRoot)
+		if err != nil {
+			return mcp.NewToolResultText(fmt.Sprintf("FAIL: %v", err)), nil
+		}
+		output, err := json.MarshalIndent(buildVerificationResult(attestation, expectedRoot, verified), "", "  ")
+		if err != nil {
+			return mcp.NewToolResultText(fmt.Sprintf("FAIL: %v", err)), nil
+		}
+		if !verified {
+			return mcp.NewToolResultText(fmt.Sprintf("FAIL: %s", output)), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("PASS: %s", output)), nil
 	})
 
 	// 3. render_mermaid Tool registrieren
@@ -84,7 +124,7 @@ func registerCoreTools(s *server.MCPServer) {
 			return mcp.NewToolResultText(fmt.Sprintf("FAIL: %v", err)), nil
 		}
 		var builder strings.Builder
-		builder.WriteString(fmt.Sprintf("=== Downstream Impact of changing %s ===\n", nodeID))
+		fmt.Fprintf(&builder, "=== Downstream Impact of changing %s ===\n", nodeID)
 		if len(list) > 0 {
 			for _, item := range list {
 				builder.WriteString(item + "\n")
@@ -119,10 +159,15 @@ func registerCoreTools(s *server.MCPServer) {
 		if err != nil {
 			return mcp.NewToolResultText(fmt.Sprintf("FAIL: cannot create output file: %v", err)), nil
 		}
-		defer out.Close()
 
 		if err := tmpl.Execute(out, data); err != nil {
+			if closeErr := out.Close(); closeErr != nil {
+				return mcp.NewToolResultText(fmt.Sprintf("FAIL: template execute error: %v; close error: %v", err, closeErr)), nil
+			}
 			return mcp.NewToolResultText(fmt.Sprintf("FAIL: template execute error: %v", err)), nil
+		}
+		if err := out.Close(); err != nil {
+			return mcp.NewToolResultText(fmt.Sprintf("FAIL: cannot close output file: %v", err)), nil
 		}
 
 		return mcp.NewToolResultText(fmt.Sprintf("PASS: HTML report successfully generated at %s", outputPath)), nil

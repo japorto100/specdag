@@ -22,124 +22,136 @@ func escapeMermaidLabel(s string) string {
 
 // RenderMap renders a DependencyMap struct into Mermaid diagram syntax, filtered by view.
 func RenderMap(depMap *dag.DependencyMap, view string) (string, error) {
-	// Filter aufbauen
+	renderedNodes, renderedEdges := selectRenderedElements(depMap, view)
+	return renderMermaid(depMap, renderedNodes, renderedEdges), nil
+}
+
+func selectRenderedElements(depMap *dag.DependencyMap, view string) (map[string]bool, map[int]bool) {
 	renderedNodes := make(map[string]bool)
 	renderedEdges := make(map[int]bool)
 
-	// Adjazenzliste für Pfadsuchen
-	adj := make(map[string][]int) // Map von nodeID zu Indices der ausgehenden Edges
-	for i, e := range depMap.Edges {
-		adj[e.From] = append(adj[e.From], i)
-	}
-
 	switch view {
 	case "orphans":
-		// Orphans haben keine ein- oder ausgehenden Kanten
-		hasEdges := make(map[string]bool)
-		for _, e := range depMap.Edges {
-			hasEdges[e.From] = true
-			hasEdges[e.To] = true
-		}
-		for _, n := range depMap.Nodes {
-			if !hasEdges[n.ID] {
-				renderedNodes[n.ID] = true
-			}
-		}
-
+		renderOrphans(depMap, renderedNodes)
 	case "approvals":
-		// Nur Approvals und deren direkte Nachbarn/Kanten
-		for i, e := range depMap.Edges {
-			fromNode := getNode(depMap.Nodes, e.From)
-			toNode := getNode(depMap.Nodes, e.To)
-			if (fromNode != nil && fromNode.Type == "approval") || (toNode != nil && toNode.Type == "approval") {
-				renderedNodes[e.From] = true
-				renderedNodes[e.To] = true
-				renderedEdges[i] = true
-			}
-		}
-		// Auch isolierte Approvals rendern
-		for _, n := range depMap.Nodes {
-			if n.Type == "approval" {
-				renderedNodes[n.ID] = true
-			}
-		}
-
+		renderApprovals(depMap, renderedNodes, renderedEdges)
 	case "events":
-		// Nur Events, Contracts und deren direkte Verbindungen
-		for _, n := range depMap.Nodes {
-			if n.Type == "event" || n.Type == "contract" {
-				renderedNodes[n.ID] = true
-			}
-		}
-		for i, e := range depMap.Edges {
-			if renderedNodes[e.From] && renderedNodes[e.To] {
-				renderedEdges[i] = true
-			}
-		}
-
+		renderNodeTypes(depMap, renderedNodes, renderedEdges, "event", "contract")
 	case "verification":
-		// Nur Expectation, Verifier, Artifact und deren Verbindungen
-		for _, n := range depMap.Nodes {
-			if n.Type == "expectation" || n.Type == "verifier" || n.Type == "artifact" {
-				renderedNodes[n.ID] = true
-			}
-		}
-		for i, e := range depMap.Edges {
-			if renderedNodes[e.From] && renderedNodes[e.To] {
-				renderedEdges[i] = true
-			}
-		}
-
+		renderNodeTypes(depMap, renderedNodes, renderedEdges, "expectation", "verifier", "artifact")
 	case "critical-path":
-		// Alle Pfade von Intent zu Expectation
-		visited := make(map[string]bool)
-		var path []int
-		var dfs func(u string) bool
+		renderCriticalPath(depMap, renderedNodes, renderedEdges)
+	default:
+		renderFull(depMap, renderedNodes, renderedEdges)
+	}
+	return renderedNodes, renderedEdges
+}
 
-		dfs = func(u string) bool {
-			uNode := getNode(depMap.Nodes, u)
-			if uNode != nil && uNode.Type == "expectation" {
-				// Kanten auf dem gefundenen Pfad markieren
-				for _, edgeIdx := range path {
-					renderedEdges[edgeIdx] = true
-					renderedNodes[depMap.Edges[edgeIdx].From] = true
-					renderedNodes[depMap.Edges[edgeIdx].To] = true
-				}
-				renderedNodes[u] = true
-				return true
-			}
-
-			visited[u] = true
-			reachedExpectation := false
-			for _, edgeIdx := range adj[u] {
-				next := depMap.Edges[edgeIdx].To
-				if !visited[next] {
-					path = append(path, edgeIdx)
-					if dfs(next) {
-						reachedExpectation = true
-					}
-					path = path[:len(path)-1] // Backtrack
-				}
-			}
-			visited[u] = false
-			return reachedExpectation
+func renderOrphans(depMap *dag.DependencyMap, renderedNodes map[string]bool) {
+	hasEdges := make(map[string]bool)
+	for _, edge := range depMap.Edges {
+		hasEdges[edge.From] = true
+		hasEdges[edge.To] = true
+	}
+	for _, node := range depMap.Nodes {
+		if !hasEdges[node.ID] {
+			renderedNodes[node.ID] = true
 		}
+	}
+}
 
-		for _, n := range depMap.Nodes {
-			if n.Type == "intent" {
-				dfs(n.ID)
-			}
-		}
-
-	default: // "full"
-		for _, n := range depMap.Nodes {
-			renderedNodes[n.ID] = true
-		}
-		for i := range depMap.Edges {
+func renderApprovals(depMap *dag.DependencyMap, renderedNodes map[string]bool, renderedEdges map[int]bool) {
+	for i, edge := range depMap.Edges {
+		fromNode := getNode(depMap.Nodes, edge.From)
+		toNode := getNode(depMap.Nodes, edge.To)
+		if (fromNode != nil && fromNode.Type == "approval") || (toNode != nil && toNode.Type == "approval") {
+			renderedNodes[edge.From] = true
+			renderedNodes[edge.To] = true
 			renderedEdges[i] = true
 		}
 	}
+	for _, node := range depMap.Nodes {
+		if node.Type == "approval" {
+			renderedNodes[node.ID] = true
+		}
+	}
+}
 
+func renderNodeTypes(depMap *dag.DependencyMap, renderedNodes map[string]bool, renderedEdges map[int]bool, types ...string) {
+	allowed := make(map[string]bool, len(types))
+	for _, nodeType := range types {
+		allowed[nodeType] = true
+	}
+	for _, node := range depMap.Nodes {
+		if allowed[node.Type] {
+			renderedNodes[node.ID] = true
+		}
+	}
+	for i, edge := range depMap.Edges {
+		if renderedNodes[edge.From] && renderedNodes[edge.To] {
+			renderedEdges[i] = true
+		}
+	}
+}
+
+func renderCriticalPath(depMap *dag.DependencyMap, renderedNodes map[string]bool, renderedEdges map[int]bool) {
+	adj := make(map[string][]int)
+	for i, edge := range depMap.Edges {
+		adj[edge.From] = append(adj[edge.From], i)
+	}
+
+	visited := make(map[string]bool)
+	var path []int
+	var dfs func(u string) bool
+
+	dfs = func(u string) bool {
+		if isNodeType(depMap.Nodes, u, "expectation") {
+			markPath(depMap, path, renderedNodes, renderedEdges)
+			renderedNodes[u] = true
+			return true
+		}
+
+		visited[u] = true
+		reachedExpectation := false
+		for _, edgeIdx := range adj[u] {
+			next := depMap.Edges[edgeIdx].To
+			if !visited[next] {
+				path = append(path, edgeIdx)
+				if dfs(next) {
+					reachedExpectation = true
+				}
+				path = path[:len(path)-1]
+			}
+		}
+		visited[u] = false
+		return reachedExpectation
+	}
+
+	for _, node := range depMap.Nodes {
+		if node.Type == "intent" {
+			dfs(node.ID)
+		}
+	}
+}
+
+func markPath(depMap *dag.DependencyMap, path []int, renderedNodes map[string]bool, renderedEdges map[int]bool) {
+	for _, edgeIdx := range path {
+		renderedEdges[edgeIdx] = true
+		renderedNodes[depMap.Edges[edgeIdx].From] = true
+		renderedNodes[depMap.Edges[edgeIdx].To] = true
+	}
+}
+
+func renderFull(depMap *dag.DependencyMap, renderedNodes map[string]bool, renderedEdges map[int]bool) {
+	for _, node := range depMap.Nodes {
+		renderedNodes[node.ID] = true
+	}
+	for i := range depMap.Edges {
+		renderedEdges[i] = true
+	}
+}
+
+func renderMermaid(depMap *dag.DependencyMap, renderedNodes map[string]bool, renderedEdges map[int]bool) string {
 	var buf bytes.Buffer
 	buf.WriteString("```mermaid\n")
 	buf.WriteString("graph TD\n")
@@ -161,21 +173,21 @@ func RenderMap(depMap *dag.DependencyMap, view string) (string, error) {
 
 		switch node.Type {
 		case "intent":
-			buf.WriteString(fmt.Sprintf("    %s([\"%s\"])\n", id, label))
+			fmt.Fprintf(&buf, "    %s([\"%s\"])\n", id, label)
 		case "expectation":
-			buf.WriteString(fmt.Sprintf("    %s{{\"%s\"}}\n", id, label))
+			fmt.Fprintf(&buf, "    %s{{\"%s\"}}\n", id, label)
 		case "event":
-			buf.WriteString(fmt.Sprintf("    %s[/\"%s\"/]\n", id, label))
+			fmt.Fprintf(&buf, "    %s[/\"%s\"/]\n", id, label)
 		case "command", "query", "job":
-			buf.WriteString(fmt.Sprintf("    %s[\"%s\"]\n", id, label))
+			fmt.Fprintf(&buf, "    %s[\"%s\"]\n", id, label)
 		case "artifact":
-			buf.WriteString(fmt.Sprintf("    %s[(\"%s\")]\n", id, label))
+			fmt.Fprintf(&buf, "    %s[(\"%s\")]\n", id, label)
 		case "verifier":
-			buf.WriteString(fmt.Sprintf("    %s(\"%s\")\n", id, label))
+			fmt.Fprintf(&buf, "    %s(\"%s\")\n", id, label)
 		case "approval":
-			buf.WriteString(fmt.Sprintf("    %s{\"%s\"}\n", id, label))
+			fmt.Fprintf(&buf, "    %s{\"%s\"}\n", id, label)
 		default:
-			buf.WriteString(fmt.Sprintf("    %s[\"%s\"]\n", id, label))
+			fmt.Fprintf(&buf, "    %s[\"%s\"]\n", id, label)
 		}
 	}
 
@@ -202,11 +214,11 @@ func RenderMap(depMap *dag.DependencyMap, view string) (string, error) {
 			label = fmt.Sprintf("%s [REQ]", label)
 		}
 
-		buf.WriteString(fmt.Sprintf("    %s -->|\"%s\"| %s\n", from, label, to))
+		fmt.Fprintf(&buf, "    %s -->|\"%s\"| %s\n", from, label, to)
 	}
 
 	buf.WriteString("```")
-	return buf.String(), nil
+	return buf.String()
 }
 
 // RenderFile liest die dependency-map.yaml und gibt den Mermaid-String zurück, gefiltert nach view.
@@ -226,6 +238,11 @@ func getNode(nodes []dag.Node, id string) *dag.Node {
 		}
 	}
 	return nil
+}
+
+func isNodeType(nodes []dag.Node, id string, nodeType string) bool {
+	node := getNode(nodes, id)
+	return node != nil && node.Type == nodeType
 }
 
 var renderCmd = &cobra.Command{

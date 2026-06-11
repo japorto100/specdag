@@ -68,10 +68,11 @@ graph TD
 2. **Model** the intended dependencies in a local `dependency-map.yaml` next to feature specs.
 3. **Ground** the map with explicit code/spec references (`node.ref`).
 4. **Validate** the map using `specdag validate`.
-5. **Assemble** local maps into a global Spec-DAG when multiple features interact.
-6. **Use** a code knowledge graph tool (e.g., GitNexus) to locate where the code implements or violates these dependencies.
-7. **Record** any mismatch as an _Evidence Gap_ or _Decision_ rather than silently updating the spec.
-8. **Implement** changes and verify with tests and `specdag report`.
+5. **Hash** the map and referenced evidence with `specdag hash`.
+6. **Assemble** local maps into a global Spec-DAG when multiple features interact.
+7. **Use** a code knowledge graph tool (e.g., GitNexus) to locate where the code implements or violates these dependencies.
+8. **Record** any mismatch as an _Evidence Gap_ or _Decision_ rather than silently updating the spec.
+9. **Implement** changes and verify with tests, `specdag verify`, refreshed code intelligence, and `specdag report`.
 
 In short:
 - `specdag` defines what **should** be true.
@@ -184,7 +185,23 @@ Generates Mermaid markdown diagram code from a map. Use `--view` to filter speci
 specdag render specs/features/012-agent-run/dependency-map.yaml --view critical-path
 ```
 
-### 4. Output Summary
+### 4. Hash Evidence
+
+Computes a deterministic SHA-256 Merkle-DAG attestation for the dependency map and every referenced evidence file:
+
+```bash
+specdag hash specs/features/012-agent-run/dependency-map.yaml --format json
+```
+
+Verify an expected root:
+
+```bash
+specdag verify specs/features/012-agent-run/dependency-map.yaml --hash <expected-root>
+```
+
+The Merkle root proves that the reviewed map and referenced evidence did not drift. It does not replace tests, builds, GitNexus/codegraph checks, or runtime verification.
+
+### 5. Output Summary
 
 Calculates KPIs, approval gates, orphan nodes, and the critical path:
 
@@ -192,7 +209,7 @@ Calculates KPIs, approval gates, orphan nodes, and the critical path:
 specdag summary specs/features/012-agent-run/dependency-map.yaml
 ```
 
-### 5. Perform Impact Analysis
+### 6. Perform Impact Analysis
 
 Finds all transitively affected downstream system components when a node ID changes:
 
@@ -200,7 +217,7 @@ Finds all transitively affected downstream system components when a node ID chan
 specdag impact specs/features/012-agent-run/dependency-map.yaml event.document.uploaded
 ```
 
-### 6. Generate HTML Report
+### 7. Generate HTML Report
 
 Generates a static HTML review report (KPIs, tables, Mermaid diagrams, filters, gaps and warnings) for a feature map or an assembled directory:
 
@@ -208,7 +225,7 @@ Generates a static HTML review report (KPIs, tables, Mermaid diagrams, filters, 
 specdag report specs/features/ -o specs/_generated/dependency-report.html
 ```
 
-### 7. Run Doctor Checks
+### 8. Run Doctor Checks
 
 Analyzes the specifications directory structure for consistency, missing files, stale outputs, and broken references:
 
@@ -216,7 +233,7 @@ Analyzes the specifications directory structure for consistency, missing files, 
 specdag doctor specs/
 ```
 
-### 8. Cross-check Catalogs
+### 9. Cross-check Catalogs
 
 Checks referenced events and contracts in your dependency maps against their catalog Markdown templates to ensure consistent status, IDs, and fields:
 
@@ -234,6 +251,8 @@ specdag check-catalogs specs/
 |---|---|---|
 | `validate_map` | Validate a local dependency map. | `filePath`, `strict` |
 | `assemble_maps` | Assemble local feature maps into a generated global map. | `dirPath`, `includeGraphs`, `format` |
+| `hash_map` | Compute a deterministic Merkle-DAG evidence attestation. | `filePath` |
+| `verify_attestation` | Verify a dependency map against an expected Merkle root. | `filePath`, `expectedRoot` |
 | `render_mermaid` | Render a Mermaid diagram from a dependency map. | `filePath`, `view` |
 | `summary_map` | Summarize nodes, edges, gaps, approvals, and critical paths. | `filePath` |
 | `analyze_impact` | List downstream nodes affected by a selected node. | `filePath`, `nodeId` |

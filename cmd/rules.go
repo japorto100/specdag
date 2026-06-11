@@ -27,7 +27,7 @@ func GetSkillRules() (string, error) {
 			}
 			// Wir entfernen den führenden Pfad "skill/" zur besseren Lesbarkeit
 			displayPath := strings.TrimPrefix(path, "skill/")
-			builder.WriteString(fmt.Sprintf("=== File: %s ===\n\n", displayPath))
+			fmt.Fprintf(&builder, "=== File: %s ===\n\n", displayPath)
 			builder.Write(content)
 			builder.WriteString("\n\n")
 		}
@@ -35,7 +35,7 @@ func GetSkillRules() (string, error) {
 	})
 
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("walk embedded skill rules: %w", err)
 	}
 
 	return builder.String(), nil

@@ -23,7 +23,8 @@
           "title": { "type": "string" },
           "ref": { "type": "string" },
           "owner": { "type": "string" },
-          "status": { "type": "string", "enum": ["draft", "accepted", "superseded"] }
+          "status": { "type": "string", "enum": ["draft", "accepted", "superseded"] },
+          "hash": { "type": "string" }
         },
         "required": ["id", "type", "title"]
       }

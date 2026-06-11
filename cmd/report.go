@@ -46,42 +46,9 @@ type ReportData struct {
 
 // GenerateReportData aggregates data from a file or directory for the HTML report.
 func GenerateReportData(targetPath string) (*ReportData, error) {
-	var depMap dag.DependencyMap
-	var validationMsg = "Map is valid and cycle-free"
-	var validationStatus = "PASS"
-
-	fi, err := os.Stat(targetPath)
+	depMap, validationStatus, validationMsg, err := loadReportDependencyMap(targetPath)
 	if err != nil {
-		return nil, fmt.Errorf("cannot access path %s: %w", targetPath, err)
-	}
-
-	if fi.IsDir() {
-		// Assembling directory
-		jsonStr, err := AssembleDirectory(targetPath, "json", false)
-		if err != nil {
-			validationStatus = "FAIL"
-			validationMsg = err.Error()
-			// minimal skeleton setup
-			depMap.Graph.ID = "global-system-map"
-			depMap.Graph.Kind = "spec_dependency"
-			depMap.Graph.Topology = "dag"
-			depMap.Graph.Status = "draft"
-		} else {
-			if err := json.Unmarshal([]byte(jsonStr), &depMap); err != nil {
-				return nil, fmt.Errorf("failed to parse assembled json: %w", err)
-			}
-		}
-	} else {
-		// Single file
-		if err := ValidateFile(targetPath); err != nil {
-			validationStatus = "FAIL"
-			validationMsg = err.Error()
-		}
-		loadedMap, err := LoadDependencyMap(targetPath)
-		if err != nil {
-			return nil, err
-		}
-		depMap = *loadedMap
+		return nil, err
 	}
 
 	if depMap.Graph.Topology == "" {
@@ -89,151 +56,18 @@ func GenerateReportData(targetPath string) (*ReportData, error) {
 	}
 
 	var gaps []ReportGap
+	orphans, orphanGaps := reportOrphans(&depMap)
+	gaps = append(gaps, orphanGaps...)
+	gaps = append(gaps, reportMissingRefs(&depMap)...)
 
-	// 1. Orphans
-	hasEdges := make(map[string]bool)
-	for _, e := range depMap.Edges {
-		hasEdges[e.From] = true
-		hasEdges[e.To] = true
-	}
-	var orphans []dag.Node
-	for _, n := range depMap.Nodes {
-		if !hasEdges[n.ID] {
-			orphans = append(orphans, n)
-			gaps = append(gaps, ReportGap{
-				Type:     "WARNING",
-				Category: "Orphan Node",
-				Message:  fmt.Sprintf("Node '%s' (%s) is not connected to any other node.", n.ID, n.Type),
-			})
-		}
-	}
+	approvals, approvalGaps := reportApprovals(&depMap)
+	gaps = append(gaps, approvalGaps...)
 
-	// 2. Missing Refs
-	for _, n := range depMap.Nodes {
-		if n.Ref == "" && (n.Type == "event" || n.Type == "contract" || n.Type == "verifier" || n.Type == "approval") {
-			gaps = append(gaps, ReportGap{
-				Type:     "WARNING",
-				Category: "Missing Reference",
-				Message:  fmt.Sprintf("Node '%s' (%s) has no 'ref' pointing to its contract, code implementation, or spec file.", n.ID, n.Type),
-			})
-		}
-	}
+	unverified, verificationGaps := reportUnverifiedExpectations(&depMap)
+	gaps = append(gaps, verificationGaps...)
 
-	// 3. Approval Gaps
-	var approvals []ReportApproval
-	approvalNodesWithIncoming := make(map[string]bool)
-	for _, e := range depMap.Edges {
-		if e.Type == "requires_approval" {
-			toNode := getNode(depMap.Nodes, e.To)
-			if toNode == nil {
-				gaps = append(gaps, ReportGap{
-					Type:     "GAP",
-					Category: "Approval Gap",
-					Message:  fmt.Sprintf("Edge '%s -> %s' requires approval but target node does not exist.", e.From, e.To),
-				})
-			} else if toNode.Type != "approval" {
-				gaps = append(gaps, ReportGap{
-					Type:     "GAP",
-					Category: "Approval Gap",
-					Message:  fmt.Sprintf("Edge '%s -> %s' requires approval but target node '%s' is of type '%s' (must be 'approval').", e.From, e.To, e.To, toNode.Type),
-				})
-			} else {
-				approvalNodesWithIncoming[e.To] = true
-			}
-
-			approvals = append(approvals, ReportApproval{
-				ApprovalNodeID: e.To,
-				TargetNodeID:   e.From,
-				Condition:      e.Condition,
-			})
-		}
-	}
-
-	for _, n := range depMap.Nodes {
-		if n.Type == "approval" && !approvalNodesWithIncoming[n.ID] {
-			gaps = append(gaps, ReportGap{
-				Type:     "WARNING",
-				Category: "Approval Gap",
-				Message:  fmt.Sprintf("Approval node '%s' is defined but has no incoming 'requires_approval' edge.", n.ID),
-			})
-		}
-	}
-
-	// 4. Unverified Expectations
-	verifiedExpectations := make(map[string]bool)
-	for _, e := range depMap.Edges {
-		if e.Type == "verifies" {
-			fromNode := getNode(depMap.Nodes, e.From)
-			if fromNode != nil && (fromNode.Type == "verifier" || fromNode.Type == "event") {
-				verifiedExpectations[e.To] = true
-			}
-		}
-	}
-	var unverified []dag.Node
-	for _, n := range depMap.Nodes {
-		if n.Type == "expectation" {
-			if !verifiedExpectations[n.ID] {
-				unverified = append(unverified, n)
-				gaps = append(gaps, ReportGap{
-					Type:     "GAP",
-					Category: "Unverified Expectation",
-					Message:  fmt.Sprintf("Expectation '%s' is not verified by any verifier or event node.", n.ID),
-				})
-			}
-		}
-	}
-
-	// 5. Critical Path
-	adj := make(map[string][]string)
-	for _, e := range depMap.Edges {
-		adj[e.From] = append(adj[e.From], e.To)
-	}
-
-	var paths []string
-	visited := make(map[string]bool)
-	var currentPath []string
-
-	var dfs func(u string)
-	dfs = func(u string) {
-		currentPath = append(currentPath, u)
-		visited[u] = true
-
-		var isExpectation bool
-		for _, n := range depMap.Nodes {
-			if n.ID == u && n.Type == "expectation" {
-				isExpectation = true
-				break
-			}
-		}
-
-		if isExpectation {
-			paths = append(paths, strings.Join(currentPath, "\n→ "))
-		} else {
-			for _, v := range adj[u] {
-				if !visited[v] {
-					dfs(v)
-				}
-			}
-		}
-
-		currentPath = currentPath[:len(currentPath)-1]
-		visited[u] = false
-	}
-
-	for _, n := range depMap.Nodes {
-		if n.Type == "intent" {
-			dfs(n.ID)
-		}
-	}
-
-	// Mermaid Rendering
-	mermaidCode := ""
-	mCode, err := RenderMap(&depMap, "full")
-	if err == nil {
-		mCode = strings.TrimPrefix(mCode, "```mermaid\n")
-		mCode = strings.TrimSuffix(mCode, "```")
-		mermaidCode = mCode
-	}
+	paths := getCriticalPaths(&depMap, "\n→ ")
+	mermaidCode := renderReportMermaid(&depMap)
 
 	return &ReportData{
 		GraphID:          depMap.Graph.ID,
@@ -254,6 +88,170 @@ func GenerateReportData(targetPath string) (*ReportData, error) {
 		MermaidCode:      mermaidCode,
 		Gaps:             gaps,
 	}, nil
+}
+
+func loadReportDependencyMap(targetPath string) (dag.DependencyMap, string, string, error) {
+	depMap := dag.DependencyMap{}
+	validationMsg := "Map is valid and cycle-free"
+	validationStatus := "PASS"
+
+	fileInfo, err := os.Stat(targetPath)
+	if err != nil {
+		return depMap, "", "", fmt.Errorf("cannot access path %s: %w", targetPath, err)
+	}
+
+	if fileInfo.IsDir() {
+		jsonStr, assemblyFailure := assembleReportJSON(targetPath)
+		if assemblyFailure != "" {
+			validationStatus = "FAIL"
+			validationMsg = assemblyFailure
+			depMap = newReportSkeletonMap()
+			return depMap, validationStatus, validationMsg, nil
+		}
+		if unmarshalErr := json.Unmarshal([]byte(jsonStr), &depMap); unmarshalErr != nil {
+			return depMap, "", "", fmt.Errorf("failed to parse assembled json: %w", unmarshalErr)
+		}
+		return depMap, validationStatus, validationMsg, nil
+	}
+
+	if validateErr := ValidateFile(targetPath); validateErr != nil {
+		validationStatus = "FAIL"
+		validationMsg = validateErr.Error()
+	}
+	loadedMap, err := LoadDependencyMap(targetPath)
+	if err != nil {
+		return depMap, "", "", fmt.Errorf("load dependency map for report: %w", err)
+	}
+	return *loadedMap, validationStatus, validationMsg, nil
+}
+
+func assembleReportJSON(targetPath string) (string, string) {
+	jsonStr, err := AssembleDirectory(targetPath, "json", false)
+	if err != nil {
+		return "", err.Error()
+	}
+	return jsonStr, ""
+}
+
+func newReportSkeletonMap() dag.DependencyMap {
+	depMap := dag.DependencyMap{}
+	depMap.Graph.ID = "global-system-map"
+	depMap.Graph.Kind = "spec_dependency"
+	depMap.Graph.Topology = "dag"
+	depMap.Graph.Status = "draft"
+	return depMap
+}
+
+func reportOrphans(depMap *dag.DependencyMap) ([]dag.Node, []ReportGap) {
+	hasEdges := make(map[string]bool)
+	for _, edge := range depMap.Edges {
+		hasEdges[edge.From] = true
+		hasEdges[edge.To] = true
+	}
+
+	var orphans []dag.Node
+	var gaps []ReportGap
+	for _, node := range depMap.Nodes {
+		if !hasEdges[node.ID] {
+			orphans = append(orphans, node)
+			gaps = append(gaps, ReportGap{
+				Type:     "WARNING",
+				Category: "Orphan Node",
+				Message:  fmt.Sprintf("Node '%s' (%s) is not connected to any other node.", node.ID, node.Type),
+			})
+		}
+	}
+	return orphans, gaps
+}
+
+func reportMissingRefs(depMap *dag.DependencyMap) []ReportGap {
+	var gaps []ReportGap
+	for _, node := range depMap.Nodes {
+		if node.Ref == "" && requiresReference(node.Type) {
+			gaps = append(gaps, ReportGap{
+				Type:     "WARNING",
+				Category: "Missing Reference",
+				Message:  fmt.Sprintf("Node '%s' (%s) has no 'ref' pointing to its contract, code implementation, or spec file.", node.ID, node.Type),
+			})
+		}
+	}
+	return gaps
+}
+
+func requiresReference(nodeType string) bool {
+	return nodeType == "event" || nodeType == "contract" || nodeType == "verifier" || nodeType == "approval"
+}
+
+func reportApprovals(depMap *dag.DependencyMap) ([]ReportApproval, []ReportGap) {
+	approvalNodesWithIncoming := make(map[string]bool)
+	var approvals []ReportApproval
+	var gaps []ReportGap
+	for _, edge := range depMap.Edges {
+		if edge.Type != "requires_approval" {
+			continue
+		}
+
+		toNode := getNode(depMap.Nodes, edge.To)
+		switch {
+		case toNode == nil:
+			gaps = append(gaps, ReportGap{
+				Type:     "GAP",
+				Category: "Approval Gap",
+				Message:  fmt.Sprintf("Edge '%s -> %s' requires approval but target node does not exist.", edge.From, edge.To),
+			})
+		case toNode.Type != "approval":
+			gaps = append(gaps, ReportGap{
+				Type:     "GAP",
+				Category: "Approval Gap",
+				Message:  fmt.Sprintf("Edge '%s -> %s' requires approval but target node '%s' is of type '%s' (must be 'approval').", edge.From, edge.To, edge.To, toNode.Type),
+			})
+		default:
+			approvalNodesWithIncoming[edge.To] = true
+		}
+
+		approvals = append(approvals, ReportApproval{
+			ApprovalNodeID: edge.To,
+			TargetNodeID:   edge.From,
+			Condition:      edge.Condition,
+		})
+	}
+
+	for _, node := range depMap.Nodes {
+		if node.Type == "approval" && !approvalNodesWithIncoming[node.ID] {
+			gaps = append(gaps, ReportGap{
+				Type:     "WARNING",
+				Category: "Approval Gap",
+				Message:  fmt.Sprintf("Approval node '%s' is defined but has no incoming 'requires_approval' edge.", node.ID),
+			})
+		}
+	}
+	return approvals, gaps
+}
+
+func reportUnverifiedExpectations(depMap *dag.DependencyMap) ([]dag.Node, []ReportGap) {
+	verifiedExpectations := getVerifiedExpectations(depMap)
+	var unverified []dag.Node
+	var gaps []ReportGap
+	for _, node := range depMap.Nodes {
+		if node.Type == "expectation" && !verifiedExpectations[node.ID] {
+			unverified = append(unverified, node)
+			gaps = append(gaps, ReportGap{
+				Type:     "GAP",
+				Category: "Unverified Expectation",
+				Message:  fmt.Sprintf("Expectation '%s' is not verified by any verifier or event node.", node.ID),
+			})
+		}
+	}
+	return unverified, gaps
+}
+
+func renderReportMermaid(depMap *dag.DependencyMap) string {
+	mCode, err := RenderMap(depMap, "full")
+	if err != nil {
+		return ""
+	}
+	mCode = strings.TrimPrefix(mCode, "```mermaid\n")
+	return strings.TrimSuffix(mCode, "```")
 }
 
 const htmlTemplate = `<!doctype html>
@@ -580,20 +578,8 @@ var reportCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		var out *os.File
-		if reportOutputFlag != "" {
-			out, err = os.Create(reportOutputFlag)
-			if err != nil {
-				fmt.Printf("FAIL: failed to create output file %s: %v\n", reportOutputFlag, err)
-				os.Exit(1)
-			}
-			defer out.Close()
-		} else {
-			out = os.Stdout
-		}
-
-		if err := tmpl.Execute(out, data); err != nil {
-			fmt.Printf("FAIL: failed to execute template: %v\n", err)
+		if err := writeReportOutput(tmpl, data, reportOutputFlag); err != nil {
+			fmt.Printf("FAIL: %v\n", err)
 			os.Exit(1)
 		}
 
@@ -601,6 +587,30 @@ var reportCmd = &cobra.Command{
 			fmt.Printf("PASS: Report successfully generated at %s\n", reportOutputFlag)
 		}
 	},
+}
+
+func writeReportOutput(tmpl *template.Template, data *ReportData, outputPath string) error {
+	if outputPath == "" {
+		if err := tmpl.Execute(os.Stdout, data); err != nil {
+			return fmt.Errorf("failed to execute template: %w", err)
+		}
+		return nil
+	}
+
+	out, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file %s: %w", outputPath, err)
+	}
+	if err := tmpl.Execute(out, data); err != nil {
+		if closeErr := out.Close(); closeErr != nil {
+			return fmt.Errorf("failed to execute template: %w; close error: %w", err, closeErr)
+		}
+		return fmt.Errorf("failed to execute template: %w", err)
+	}
+	if err := out.Close(); err != nil {
+		return fmt.Errorf("failed to close output file %s: %w", outputPath, err)
+	}
+	return nil
 }
 
 func init() {

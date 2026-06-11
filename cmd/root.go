@@ -7,6 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const Version = "0.4.0"
+
 var rootCmd = &cobra.Command{
 	Use:   "specdag",
 	Short: "specdag validates, assembles and renders dependency maps",
@@ -24,6 +26,8 @@ func init() {
 	rootCmd.AddCommand(validateCmd)
 	rootCmd.AddCommand(assembleCmd)
 	rootCmd.AddCommand(renderCmd)
+	rootCmd.AddCommand(hashCmd)
+	rootCmd.AddCommand(verifyCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(summaryCmd)
 	rootCmd.AddCommand(impactCmd)

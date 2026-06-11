@@ -1,6 +1,6 @@
 {
   "name": "@japorto100/specdag",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "SpecDAG CLI and MCP server for Event-Spec-Driven Development",
   "license": "MIT",
   "homepage": "https://github.com/japorto100/specdag",

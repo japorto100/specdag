@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/japorto100/specdag/dag"
 	"github.com/spf13/cobra"
 )
 
@@ -16,22 +17,11 @@ func GetSummaryText(filePath string) (string, error) {
 	}
 
 	var buf strings.Builder
-	buf.WriteString(fmt.Sprintf("=== SpecDAG Summary: %s ===\n", depMap.Graph.ID))
-	buf.WriteString(fmt.Sprintf("Kind: %s | Status: %s | Topology: %s\n", depMap.Graph.Kind, depMap.Graph.Status, depMap.Graph.Topology))
-	buf.WriteString(fmt.Sprintf("Nodes: %d | Edges: %d\n\n", len(depMap.Nodes), len(depMap.Edges)))
+	fmt.Fprintf(&buf, "=== SpecDAG Summary: %s ===\n", depMap.Graph.ID)
+	fmt.Fprintf(&buf, "Kind: %s | Status: %s | Topology: %s\n", depMap.Graph.Kind, depMap.Graph.Status, depMap.Graph.Topology)
+	fmt.Fprintf(&buf, "Nodes: %d | Edges: %d\n\n", len(depMap.Nodes), len(depMap.Edges))
 
-	// 1. Verwaiste Knoten (Orphans) finden
-	hasEdges := make(map[string]bool)
-	for _, e := range depMap.Edges {
-		hasEdges[e.From] = true
-		hasEdges[e.To] = true
-	}
-	var orphans []string
-	for _, n := range depMap.Nodes {
-		if !hasEdges[n.ID] {
-			orphans = append(orphans, fmt.Sprintf("- %s (%s): \"%s\"", n.ID, n.Type, n.Title))
-		}
-	}
+	orphans := getOrphanLines(depMap)
 	buf.WriteString("--- Verwaiste Knoten (Orphans) ---\n")
 	if len(orphans) > 0 {
 		buf.WriteString(strings.Join(orphans, "\n") + "\n")
@@ -40,17 +30,7 @@ func GetSummaryText(filePath string) (string, error) {
 	}
 	buf.WriteString("\n")
 
-	// 2. Approval Gates
-	var approvals []string
-	for _, e := range depMap.Edges {
-		if e.Type == "requires_approval" {
-			condStr := "none"
-			if e.Condition != "" {
-				condStr = e.Condition
-			}
-			approvals = append(approvals, fmt.Sprintf("- %s blockiert %s (Condition: %s)", e.To, e.From, condStr))
-		}
-	}
+	approvals := getApprovalLines(depMap)
 	buf.WriteString("--- Freigabe-Schranken (Approvals) ---\n")
 	if len(approvals) > 0 {
 		buf.WriteString(strings.Join(approvals, "\n") + "\n")
@@ -59,24 +39,7 @@ func GetSummaryText(filePath string) (string, error) {
 	}
 	buf.WriteString("\n")
 
-	// 3. Verification Coverage (Welche Expectations sind ungedeckt?)
-	verifiedExpectations := make(map[string]bool)
-	for _, e := range depMap.Edges {
-		if e.Type == "verifies" {
-			fromNode := getNode(depMap.Nodes, e.From)
-			if fromNode != nil && (fromNode.Type == "verifier" || fromNode.Type == "event") {
-				verifiedExpectations[e.To] = true
-			}
-		}
-	}
-	var missingVerifications []string
-	for _, n := range depMap.Nodes {
-		if n.Type == "expectation" {
-			if !verifiedExpectations[n.ID] {
-				missingVerifications = append(missingVerifications, fmt.Sprintf("- %s: \"%s\"", n.ID, n.Title))
-			}
-		}
-	}
+	missingVerifications := getMissingVerificationLines(depMap)
 	buf.WriteString("--- Fehlende Verifikationen (Unverified Expectations) ---\n")
 	if len(missingVerifications) > 0 {
 		buf.WriteString(strings.Join(missingVerifications, "\n") + "\n")
@@ -85,10 +48,76 @@ func GetSummaryText(filePath string) (string, error) {
 	}
 	buf.WriteString("\n")
 
-	// 4. Critical Path
+	paths := getCriticalPaths(depMap, " -> ")
+	buf.WriteString("--- Kritischer Kausalpfad (Critical Path) ---\n")
+	if len(paths) > 0 {
+		buf.WriteString(strings.Join(paths, "\n") + "\n")
+	} else {
+		buf.WriteString("Kein Kausalpfad von Intent zu Expectation gefunden.\n")
+	}
+
+	return buf.String(), nil
+}
+
+func getOrphanLines(depMap *dag.DependencyMap) []string {
+	hasEdges := make(map[string]bool)
+	for _, edge := range depMap.Edges {
+		hasEdges[edge.From] = true
+		hasEdges[edge.To] = true
+	}
+
+	var orphans []string
+	for _, node := range depMap.Nodes {
+		if !hasEdges[node.ID] {
+			orphans = append(orphans, fmt.Sprintf("- %s (%s): \"%s\"", node.ID, node.Type, node.Title))
+		}
+	}
+	return orphans
+}
+
+func getApprovalLines(depMap *dag.DependencyMap) []string {
+	var approvals []string
+	for _, edge := range depMap.Edges {
+		if edge.Type == "requires_approval" {
+			condition := "none"
+			if edge.Condition != "" {
+				condition = edge.Condition
+			}
+			approvals = append(approvals, fmt.Sprintf("- %s blockiert %s (Condition: %s)", edge.To, edge.From, condition))
+		}
+	}
+	return approvals
+}
+
+func getMissingVerificationLines(depMap *dag.DependencyMap) []string {
+	verifiedExpectations := getVerifiedExpectations(depMap)
+	var missing []string
+	for _, node := range depMap.Nodes {
+		if node.Type == "expectation" && !verifiedExpectations[node.ID] {
+			missing = append(missing, fmt.Sprintf("- %s: \"%s\"", node.ID, node.Title))
+		}
+	}
+	return missing
+}
+
+func getVerifiedExpectations(depMap *dag.DependencyMap) map[string]bool {
+	verifiedExpectations := make(map[string]bool)
+	for _, edge := range depMap.Edges {
+		if edge.Type != "verifies" {
+			continue
+		}
+		fromNode := getNode(depMap.Nodes, edge.From)
+		if fromNode != nil && (fromNode.Type == "verifier" || fromNode.Type == "event") {
+			verifiedExpectations[edge.To] = true
+		}
+	}
+	return verifiedExpectations
+}
+
+func getCriticalPaths(depMap *dag.DependencyMap, separator string) []string {
 	adj := make(map[string][]string)
-	for _, e := range depMap.Edges {
-		adj[e.From] = append(adj[e.From], e.To)
+	for _, edge := range depMap.Edges {
+		adj[edge.From] = append(adj[edge.From], edge.To)
 	}
 
 	var paths []string
@@ -100,9 +129,8 @@ func GetSummaryText(filePath string) (string, error) {
 		currentPath = append(currentPath, u)
 		visited[u] = true
 
-		uNode := getNode(depMap.Nodes, u)
-		if uNode != nil && uNode.Type == "expectation" {
-			paths = append(paths, strings.Join(currentPath, " -> "))
+		if isNodeType(depMap.Nodes, u, "expectation") {
+			paths = append(paths, strings.Join(currentPath, separator))
 		} else {
 			for _, v := range adj[u] {
 				if !visited[v] {
@@ -115,20 +143,12 @@ func GetSummaryText(filePath string) (string, error) {
 		visited[u] = false
 	}
 
-	for _, n := range depMap.Nodes {
-		if n.Type == "intent" {
-			dfs(n.ID)
+	for _, node := range depMap.Nodes {
+		if node.Type == "intent" {
+			dfs(node.ID)
 		}
 	}
-
-	buf.WriteString("--- Kritischer Kausalpfad (Critical Path) ---\n")
-	if len(paths) > 0 {
-		buf.WriteString(strings.Join(paths, "\n") + "\n")
-	} else {
-		buf.WriteString("Kein Kausalpfad von Intent zu Expectation gefunden.\n")
-	}
-
-	return buf.String(), nil
+	return paths
 }
 
 var summaryCmd = &cobra.Command{

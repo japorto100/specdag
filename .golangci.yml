@@ -1,0 +1,137 @@
+# Run from repo root: golangci-lint run ./...
+# Based on tradeview-fusion/go-backend/.golangci.yml.
+# SpecDAG has a pre-existing legacy baseline, so this gates new/changed code.
+version: "2"
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+linters:
+  enable:
+    # standard baseline
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    # correctness
+    - nilerr
+    - forcetypeassert
+    - copyloopvar
+    - durationcheck
+    - reassign
+    # code quality
+    - gocritic
+    - gocognit
+    - gocyclo
+    - maintidx
+    - exhaustive
+    - revive
+    - nolintlint
+    - errorlint
+    - wrapcheck
+    - predeclared
+    - errname
+    - usestdlibvars
+    - intrange
+    - exptostd
+    # context safety
+    - fatcontext
+    - noctx
+    - containedctx
+    # security
+    - gosec
+    - bidichk
+    - asciicheck
+    - bodyclose
+    # observability
+    - spancheck
+    - loggercheck
+    - sloglint
+    # database
+    - sqlclosecheck
+    - rowserrcheck
+    # testing
+    - thelper
+    - usetesting
+    - testifylint
+    # modernization
+    - modernize
+  settings:
+    staticcheck:
+      checks:
+        - "all"
+        - "-SA1019"
+        - "-ST1000"
+        - "-ST1003"
+    govet:
+      enable:
+        - shadow
+        - waitgroup
+        - hostport
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: var-naming
+          disabled: true
+    exhaustive:
+      default-signifies-exhaustive: true
+    gocognit:
+      min-complexity: 40
+    gocyclo:
+      min-complexity: 30
+    maintidx:
+      under: 20
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    gosec:
+      excludes:
+        - G104
+        - G304
+    wrapcheck:
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - .Wrap(
+        - .Wrapf(
+    spancheck:
+      checks:
+        - end
+        - record-error
+    loggercheck:
+      require-string-key: true
+      no-printf-like: true
+    predeclared:
+      ignore:
+        - min
+        - max
+        - close
+        - copy
+        - clear
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gocritic
+          - wrapcheck
+          - gosec
+    paths:
+      - vendor
+      - testdata
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+  exclusions:
+    paths:
+      - vendor
+      - testdata

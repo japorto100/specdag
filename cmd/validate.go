@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/japorto100/specdag/dag"
@@ -81,11 +82,25 @@ func LoadDependencyMap(filePath string) (*dag.DependencyMap, error) {
 
 // ValidateDependencyMap validiert die Struktur einer geladenen Dependency Map.
 func ValidateDependencyMap(depMap *dag.DependencyMap, strict bool) error {
+	if err := validateGraphMetadata(depMap); err != nil {
+		return err
+	}
+
+	nodeMap, err := validateNodes(depMap.Nodes)
+	if err != nil {
+		return err
+	}
+	if err := validateEdges(depMap.Edges, nodeMap, strict); err != nil {
+		return err
+	}
+	return validateTopology(depMap)
+}
+
+func validateGraphMetadata(depMap *dag.DependencyMap) error {
 	if depMap.Graph.ID == "" {
 		return fmt.Errorf("graph.id is required")
 	}
 
-	// Valide Graph-Arten
 	validKinds := map[string]bool{
 		"spec_dependency":    true,
 		"event_flow":         true,
@@ -96,111 +111,163 @@ func ValidateDependencyMap(depMap *dag.DependencyMap, strict bool) error {
 		return fmt.Errorf("invalid graph.kind: '%s' (must be spec_dependency, event_flow, agent_run_trace, or execution_workflow)", depMap.Graph.Kind)
 	}
 
-	// Topologie-Validierung
 	if depMap.Graph.Topology != "" && depMap.Graph.Topology != "dag" && depMap.Graph.Topology != "graph" {
 		return fmt.Errorf("invalid graph.topology: '%s' (must be 'dag' or 'graph')", depMap.Graph.Topology)
 	}
 
-	// Status-Validierung
 	if !isValidStatus(depMap.Graph.Status) {
 		return fmt.Errorf("invalid graph.status: '%s' (must be draft, accepted, or superseded)", depMap.Graph.Status)
 	}
+	return nil
+}
 
-	// Nodes validieren
-	if len(depMap.Nodes) == 0 {
-		return fmt.Errorf("nodes list cannot be empty")
+func validateNodes(nodes []dag.Node) (map[string]dag.Node, error) {
+	if len(nodes) == 0 {
+		return nil, fmt.Errorf("nodes list cannot be empty")
 	}
+
 	nodeMap := make(map[string]dag.Node)
-	nodeSet := make(map[string]bool)
-	for i, n := range depMap.Nodes {
-		if n.ID == "" {
-			return fmt.Errorf("node[%d].id is empty", i)
+	for i, node := range nodes {
+		if node.ID == "" {
+			return nil, fmt.Errorf("node[%d].id is empty", i)
 		}
-		if nodeSet[n.ID] {
-			return fmt.Errorf("duplicate node ID detected: %s", n.ID)
+		if _, found := nodeMap[node.ID]; found {
+			return nil, fmt.Errorf("duplicate node ID detected: %s", node.ID)
 		}
-		nodeSet[n.ID] = true
-		nodeMap[n.ID] = n
-
-		if !isValidNodeType(n.Type) {
-			return fmt.Errorf("invalid node type for '%s': '%s'", n.ID, n.Type)
+		if !isValidNodeType(node.Type) {
+			return nil, fmt.Errorf("invalid node type for '%s': '%s'", node.ID, node.Type)
 		}
-		if n.Title == "" {
-			return fmt.Errorf("node '%s' has an empty title", n.ID)
+		if node.Title == "" {
+			return nil, fmt.Errorf("node '%s' has an empty title", node.ID)
 		}
-		if n.Status != "" && !isValidStatus(n.Status) {
-			return fmt.Errorf("invalid node status for '%s': '%s'", n.ID, n.Status)
+		if node.Status != "" && !isValidStatus(node.Status) {
+			return nil, fmt.Errorf("invalid node status for '%s': '%s'", node.ID, node.Status)
 		}
+		nodeMap[node.ID] = node
 	}
+	return nodeMap, nil
+}
 
-	// Edges validieren
-	for i, e := range depMap.Edges {
-		if e.From == "" || e.To == "" {
-			return fmt.Errorf("edge[%d] has empty from or to", i)
+func validateEdges(edges []dag.Edge, nodeMap map[string]dag.Node, strict bool) error {
+	for i, edge := range edges {
+		fromNode, toNode, err := validateEdge(edge, nodeMap, i)
+		if err != nil {
+			return err
 		}
-		fromNode, fromFound := nodeMap[e.From]
-		if !fromFound {
-			return fmt.Errorf("edge references undeclared node ID: %s (in from)", e.From)
-		}
-		toNode, toFound := nodeMap[e.To]
-		if !toFound {
-			return fmt.Errorf("edge references undeclared node ID: %s (in to)", e.To)
-		}
-		if !isValidEdgeType(e.Type) {
-			return fmt.Errorf("invalid edge type: '%s' (between %s and %s)", e.Type, e.From, e.To)
-		}
-
 		if strict {
-			switch e.Type {
-			case "defines_success_for":
-				if fromNode.Type != "intent" || toNode.Type != "expectation" {
-					return fmt.Errorf("strict edge mismatch: defines_success_for must link intent -> expectation, got %s (%s) -> %s (%s)", e.From, fromNode.Type, e.To, toNode.Type)
-				}
-			case "triggers":
-				if (fromNode.Type != "event" && fromNode.Type != "approval") || (toNode.Type != "job" && toNode.Type != "command") {
-					return fmt.Errorf("strict edge mismatch: triggers must link event/approval -> job/command, got %s (%s) -> %s (%s)", e.From, fromNode.Type, e.To, toNode.Type)
-				}
-			case "produces":
-				if (fromNode.Type != "job" && fromNode.Type != "command" && fromNode.Type != "contract") || (toNode.Type != "artifact" && toNode.Type != "event") {
-					return fmt.Errorf("strict edge mismatch: produces must link job/command/contract -> artifact/event, got %s (%s) -> %s (%s)", e.From, fromNode.Type, e.To, toNode.Type)
-				}
-			case "consumes":
-				if (fromNode.Type != "job" && fromNode.Type != "command") || (toNode.Type != "artifact" && toNode.Type != "event" && toNode.Type != "contract") {
-					return fmt.Errorf("strict edge mismatch: consumes must link job/command -> artifact/event/contract, got %s (%s) -> %s (%s)", e.From, fromNode.Type, e.To, toNode.Type)
-				}
-			case "verified_by":
-				if (fromNode.Type != "artifact" && fromNode.Type != "event" && fromNode.Type != "job") || toNode.Type != "verifier" {
-					return fmt.Errorf("strict edge mismatch: verified_by must link artifact/event/job -> verifier, got %s (%s) -> %s (%s)", e.From, fromNode.Type, e.To, toNode.Type)
-				}
-			case "verifies":
-				if (fromNode.Type != "verifier" && fromNode.Type != "event") || toNode.Type != "expectation" {
-					return fmt.Errorf("strict edge mismatch: verifies must link verifier/event -> expectation, got %s (%s) -> %s (%s)", e.From, fromNode.Type, e.To, toNode.Type)
-				}
-			case "requires_approval":
-				if (fromNode.Type != "job" && fromNode.Type != "event" && fromNode.Type != "command") || toNode.Type != "approval" {
-					return fmt.Errorf("strict edge mismatch: requires_approval must link job/event/command -> approval, got %s (%s) -> %s (%s)", e.From, fromNode.Type, e.To, toNode.Type)
-				}
+			if err := validateStrictEdge(edge, fromNode, toNode); err != nil {
+				return err
 			}
 		}
 	}
+	return nil
+}
 
-	// Zyklenerkennung (wenn topology nicht explizit auf "graph" gesetzt ist)
-	isDAG := depMap.Graph.Topology != "graph"
-	if isDAG {
-		g := dag.NewGraph()
-		for _, n := range depMap.Nodes {
-			g.AddNode(n)
-		}
-		for _, e := range depMap.Edges {
-			g.AddEdge(e.From, e.To)
-		}
+func validateEdge(edge dag.Edge, nodeMap map[string]dag.Node, index int) (dag.Node, dag.Node, error) {
+	if edge.From == "" || edge.To == "" {
+		return dag.Node{}, dag.Node{}, fmt.Errorf("edge[%d] has empty from or to", index)
+	}
+	fromNode, fromFound := nodeMap[edge.From]
+	if !fromFound {
+		return dag.Node{}, dag.Node{}, fmt.Errorf("edge references undeclared node ID: %s (in from)", edge.From)
+	}
+	toNode, toFound := nodeMap[edge.To]
+	if !toFound {
+		return dag.Node{}, dag.Node{}, fmt.Errorf("edge references undeclared node ID: %s (in to)", edge.To)
+	}
+	if !isValidEdgeType(edge.Type) {
+		return dag.Node{}, dag.Node{}, fmt.Errorf("invalid edge type: '%s' (between %s and %s)", edge.Type, edge.From, edge.To)
+	}
+	return fromNode, toNode, nil
+}
 
-		cycle, err := g.FindCycles()
-		if err != nil {
-			return fmt.Errorf("graph is cyclic! Cycle path: %v", cycle)
-		}
+func validateStrictEdge(edge dag.Edge, fromNode dag.Node, toNode dag.Node) error {
+	valid := true
+	switch edge.Type {
+	case "defines_success_for":
+		valid = isIntentToExpectation(fromNode, toNode)
+	case "triggers":
+		valid = isTriggerEdge(fromNode, toNode)
+	case "produces":
+		valid = isProducesEdge(fromNode, toNode)
+	case "consumes":
+		valid = isConsumesEdge(fromNode, toNode)
+	case "verified_by":
+		valid = isVerifiedByEdge(fromNode, toNode)
+	case "verifies":
+		valid = isVerifiesEdge(fromNode, toNode)
+	case "requires_approval":
+		valid = isRequiresApprovalEdge(fromNode, toNode)
+	}
+	if !valid {
+		return strictEdgeMismatch(edge, fromNode, toNode)
+	}
+	return nil
+}
+
+func isIntentToExpectation(fromNode dag.Node, toNode dag.Node) bool {
+	return fromNode.Type == "intent" && toNode.Type == "expectation"
+}
+
+func isTriggerEdge(fromNode dag.Node, toNode dag.Node) bool {
+	return isAnyNodeType(fromNode, "event", "approval") && isAnyNodeType(toNode, "job", "command")
+}
+
+func isProducesEdge(fromNode dag.Node, toNode dag.Node) bool {
+	return isAnyNodeType(fromNode, "job", "command", "contract") && isAnyNodeType(toNode, "artifact", "event")
+}
+
+func isConsumesEdge(fromNode dag.Node, toNode dag.Node) bool {
+	return isAnyNodeType(fromNode, "job", "command") && isAnyNodeType(toNode, "artifact", "event", "contract")
+}
+
+func isVerifiedByEdge(fromNode dag.Node, toNode dag.Node) bool {
+	return isAnyNodeType(fromNode, "artifact", "event", "job") && toNode.Type == "verifier"
+}
+
+func isVerifiesEdge(fromNode dag.Node, toNode dag.Node) bool {
+	return isAnyNodeType(fromNode, "verifier", "event") && toNode.Type == "expectation"
+}
+
+func isRequiresApprovalEdge(fromNode dag.Node, toNode dag.Node) bool {
+	return isAnyNodeType(fromNode, "job", "event", "command") && toNode.Type == "approval"
+}
+
+func isAnyNodeType(node dag.Node, nodeTypes ...string) bool {
+	return slices.Contains(nodeTypes, node.Type)
+}
+
+func strictEdgeMismatch(edge dag.Edge, fromNode dag.Node, toNode dag.Node) error {
+	expected := map[string]string{
+		"defines_success_for": "intent -> expectation",
+		"triggers":            "event/approval -> job/command",
+		"produces":            "job/command/contract -> artifact/event",
+		"consumes":            "job/command -> artifact/event/contract",
+		"verified_by":         "artifact/event/job -> verifier",
+		"verifies":            "verifier/event -> expectation",
+		"requires_approval":   "job/event/command -> approval",
+	}
+	return fmt.Errorf("strict edge mismatch: %s must link %s, got %s (%s) -> %s (%s)",
+		edge.Type, expected[edge.Type], edge.From, fromNode.Type, edge.To, toNode.Type)
+}
+
+func validateTopology(depMap *dag.DependencyMap) error {
+	if depMap.Graph.Topology == "graph" {
+		return nil
 	}
 
+	graph := dag.NewGraph()
+	for _, node := range depMap.Nodes {
+		graph.AddNode(node)
+	}
+	for _, edge := range depMap.Edges {
+		graph.AddEdge(edge.From, edge.To)
+	}
+
+	cycle, err := graph.FindCycles()
+	if err != nil {
+		return fmt.Errorf("graph is cyclic! Cycle path: %v", cycle)
+	}
 	return nil
 }
 

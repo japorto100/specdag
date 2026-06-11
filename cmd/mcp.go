@@ -13,7 +13,7 @@ var mcpCmd = &cobra.Command{
 	Short: "Starts the specdag tool as an MCP Server over Stdio",
 	Run: func(cmd *cobra.Command, args []string) {
 		// Neuen MCP Server erstellen
-		s := server.NewMCPServer("specdag-mcp", "1.0.0")
+		s := server.NewMCPServer("specdag-mcp", Version)
 
 		// Ausgelagerte Registrierungs-Funktionen aufrufen
 		registerCoreTools(s)

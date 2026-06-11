@@ -222,6 +222,47 @@ For bounded-context vocabulary guidance, read
 - Contracts must distinguish draft from final.
 - Evidence should be durable: command output, screenshots, payload samples,
   benchmarks, build/test logs.
+- For Level 2+ work, every `verifier`, `contract`, `event`, and durable
+  `artifact` node should use `ref` when practical. Referenced files become
+  part of the Merkle attestation and must not be silently rewritten.
+
+## Completion Attestation Rules
+
+Completion is an evidence claim, not a status label. A feature such as `F57`
+counts as complete only when the intended Spec-DAG, referenced evidence,
+executed verifiers, and observed code state agree closely enough for the risk
+level.
+
+- Treat `dependency-map.yaml` as the normative graph: it says what should be
+  true, which expectations define success, and which verifiers prove them.
+- Treat code intelligence tools such as GitNexus as observed reality: they show
+  existing symbols, callers, flows, blast radius, and drift from the spec.
+- Run SpecDAG before implementation to check the intended graph, then run
+  GitNexus impact/context checks before edits that affect code symbols.
+- After implementation, run concrete verifiers first, re-index or refresh the
+  observed code graph, then hash/verify the Spec-DAG evidence.
+- Do not mark a task complete just because a node status says `accepted`.
+  `accepted` means the spec/evidence is approved; completion still requires
+  verifier outputs.
+- If multiple maps or branches mention the same feature label, require stable
+  unique node IDs (for example `feature.F57.import` and
+  `feature.F57.renderer`). Same IDs with different titles, types, or contracts
+  are conflicts.
+
+Minimum completion gate for Level 2+:
+
+```text
+specdag validate --strict <map>
+specdag hash <map>
+run declared verifier commands
+refresh observed code graph when code changed
+compare observed flows to expected refs/contracts
+record gaps or decisions before claiming done
+```
+
+The Merkle root proves that the reviewed map and referenced evidence did not
+drift. It does not prove the software works by itself; verifier outputs and
+observed-code checks provide that evidence.
 
 ## Archive Rules
 
@@ -301,6 +342,8 @@ For Level 2+ features, maintain a lightweight dependency map (`dependency-map.ya
 
 Use the `specdag` CLI tool or MCP server to manage and validate dependency maps:
 - **Validate local map:** `specdag validate specs/features/NNN-name/dependency-map.yaml`
+- **Hash evidence:** `specdag hash specs/features/NNN-name/dependency-map.yaml`
+- **Verify attestation:** `specdag verify specs/features/NNN-name/dependency-map.yaml --hash <root>`
 - **Assemble global map:** `specdag assemble specs/features/` (scans all features and builds a unified map, checking for global conflicts/cycles)
 - **Render Mermaid diagram:** `specdag render specs/features/NNN-name/dependency-map.yaml`
-- **Start MCP Server:** `specdag mcp` (exposes validation, assembly, and rendering tools to AI agents over standard I/O)
+- **Start MCP Server:** `specdag mcp` (exposes validation, assembly, hashing, verification, and rendering tools to AI agents over standard I/O)
