@@ -58,7 +58,10 @@ You choose which CLI agents to install for.`,
 
 		var selected []agentInfo
 
-		if allFlag {
+		if dryRun && agentFlag == "" && !allFlag {
+			// Dry-run with no agent selection: show all
+			selected = knownAgents
+		} else if allFlag {
 			selected = knownAgents
 		} else if agentFlag != "" {
 			for _, a := range knownAgents {
