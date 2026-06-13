@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const https = require("node:https");
+const readline = require("node:readline");
 const childProcess = require("node:child_process");
 
 const pkg = require("../package.json");
@@ -60,7 +61,18 @@ function download(fileUrl, dest) {
   });
 }
 
+function ask(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
+
 (async () => {
+  // Step 1: Download binary
   console.log(`Downloading ${url}`);
   await download(url, archivePath);
 
@@ -80,7 +92,28 @@ function download(fileUrl, dest) {
   // clean up downloaded archive
   fs.unlinkSync(archivePath);
 
-  console.log("specdag installed.");
+  console.log("\n✅ specdag binary installed.");
+
+  // Step 2: Offer MCP setup
+  const binPath = path.join(vendorDir, isWindows ? "specdag.exe" : "specdag");
+
+  if (process.stdout.isTTY || process.stderr.isTTY) {
+    const answer = await ask("\n🔧 Register specdag as MCP server? [y/N] ");
+    if (answer.toLowerCase() === "y" || answer.toLowerCase() === "yes") {
+      try {
+        childProcess.execFileSync(binPath, ["mcp", "setup"], {
+          stdio: "inherit",
+          cwd: process.cwd(),
+        });
+      } catch {
+        console.log("MCP setup skipped (run 'specdag mcp setup' later).");
+      }
+    } else {
+      console.log("Skipped MCP setup. Run 'specdag mcp setup' when ready.");
+    }
+  } else {
+    console.log("Non-interactive. Run 'specdag mcp setup' to register MCP server.");
+  }
 })().catch((err) => {
   console.error(err);
   process.exit(1);
